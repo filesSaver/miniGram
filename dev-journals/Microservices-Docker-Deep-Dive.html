@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Microservices & Docker — Deep Dive Guide</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222638;
+      --border: #2e3248;
+      --accent: #6c8fff;
+      --accent2: #a78bfa;
+      --accent3: #34d399;
+      --accent4: #f59e0b;
+      --accent5: #f87171;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --code-bg: #0d1117;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    /* ── Layout ── */
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: 280px;
+      min-width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 32px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    nav .brand {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    nav .brand h2 { font-size: 14px; color: var(--accent); letter-spacing: 0.08em; text-transform: uppercase; }
+    nav .brand p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    nav ul { list-style: none; padding: 0 12px; }
+    nav ul li a {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    nav ul li a:hover { background: var(--surface2); color: var(--text); }
+    nav ul li.section {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--border);
+      padding: 16px 12px 4px;
+      font-weight: 600;
+    }
+
+    main {
+      flex: 1;
+      max-width: 900px;
+      padding: 48px 56px;
+      overflow-x: hidden;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #1a1d27 0%, #1e2235 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px;
+      margin-bottom: 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 240px; height: 240px;
+      background: radial-gradient(circle, rgba(108,143,255,0.12) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .hero .tag {
+      display: inline-block;
+      background: rgba(108,143,255,0.15);
+      color: var(--accent);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 99px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(108,143,255,0.3);
+    }
+    .hero h1 { font-size: 32px; font-weight: 700; line-height: 1.2; margin-bottom: 12px; }
+    .hero h1 span { color: var(--accent); }
+    .hero p { color: var(--muted); font-size: 16px; max-width: 560px; }
+
+    /* ── Sections ── */
+    .section { margin-bottom: 64px; scroll-margin-top: 32px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-number {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    h2 { font-size: 22px; font-weight: 700; }
+    h3 { font-size: 16px; font-weight: 600; color: var(--accent2); margin: 28px 0 10px; }
+    h4 { font-size: 14px; font-weight: 600; color: var(--accent3); margin: 20px 0 8px; }
+
+    p { color: var(--muted); margin-bottom: 14px; }
+    p strong { color: var(--text); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .card-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .card p { margin: 0; font-size: 13px; }
+
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .card-grid { grid-template-columns: 1fr; } }
+
+    /* ── Service table ── */
+    .service-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .service-table th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 10px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .service-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+      vertical-align: top;
+    }
+    .service-table tr:last-child td { border-bottom: none; }
+    .service-table td:first-child { color: var(--accent); font-family: 'Menlo', monospace; font-weight: 600; }
+    .service-table td:nth-child(2) { color: var(--accent4); font-family: 'Menlo', monospace; }
+
+    /* ── Code blocks ── */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    code {
+      font-family: 'Menlo', 'Monaco', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    p code, li code {
+      background: var(--surface2);
+      color: var(--accent3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+
+    /* Syntax colours */
+    .k { color: #ff79c6; }   /* keyword */
+    .s { color: #f1fa8c; }   /* string */
+    .c { color: #6272a4; font-style: italic; }   /* comment */
+    .n { color: #50fa7b; }   /* name/function */
+    .v { color: #bd93f9; }   /* variable */
+    .p { color: #8be9fd; }   /* property */
+    .num { color: #ffb86c; } /* number */
+
+    /* ── Flow diagram ── */
+    .flow {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 32px;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+    .flow-row { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    .flow-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-family: 'Menlo', monospace;
+      font-weight: 600;
+    }
+    .flow-box.blue { border-color: var(--accent); color: var(--accent); }
+    .flow-box.purple { border-color: var(--accent2); color: var(--accent2); }
+    .flow-box.green { border-color: var(--accent3); color: var(--accent3); }
+    .flow-box.yellow { border-color: var(--accent4); color: var(--accent4); }
+    .flow-arrow { color: var(--muted); font-size: 18px; }
+    .flow-label { font-size: 11px; color: var(--muted); margin-top: 16px; }
+
+    /* ── Callout boxes ── */
+    .callout {
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      border-left: 4px solid;
+      display: flex;
+      gap: 12px;
+    }
+    .callout.info { background: rgba(108,143,255,0.08); border-color: var(--accent); }
+    .callout.warn { background: rgba(245,158,11,0.08); border-color: var(--accent4); }
+    .callout.tip  { background: rgba(52,211,153,0.08); border-color: var(--accent3); }
+    .callout.danger { background: rgba(248,113,113,0.08); border-color: var(--accent5); }
+    .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .callout-body { font-size: 13px; color: var(--muted); }
+    .callout-body strong { color: var(--text); display: block; margin-bottom: 4px; }
+
+    /* ── Steps ── */
+    .steps { counter-reset: step; margin-bottom: 24px; }
+    .step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      align-items: flex-start;
+    }
+    .step-num {
+      counter-increment: step;
+      width: 28px; height: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+      flex-shrink: 0;
+      color: var(--accent);
+      margin-top: 2px;
+    }
+    .step-body { flex: 1; }
+    .step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .step-desc { font-size: 13px; color: var(--muted); }
+
+    /* ── Comparison table ── */
+    .compare { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .compare th {
+      background: var(--surface2); padding: 10px 16px;
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .compare td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+    .compare tr:last-child td { border-bottom: none; }
+    .compare td:first-child { color: var(--text); font-weight: 600; }
+    .yes { color: var(--accent3); }
+    .no  { color: var(--accent5); }
+
+    /* ── Pill tags ── */
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .tag-pill {
+      font-size: 11px; padding: 3px 10px; border-radius: 99px;
+      border: 1px solid; font-family: 'Menlo', monospace;
+    }
+    .tag-pill.blue { color: var(--accent); border-color: rgba(108,143,255,0.4); background: rgba(108,143,255,0.08); }
+    .tag-pill.green { color: var(--accent3); border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08); }
+    .tag-pill.yellow { color: var(--accent4); border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.08); }
+    .tag-pill.purple { color: var(--accent2); border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.08); }
+
+    ul.bullet { padding-left: 20px; color: var(--muted); font-size: 14px; }
+    ul.bullet li { margin-bottom: 6px; }
+    ul.bullet li strong { color: var(--text); }
+
+    /* ── Divider ── */
+    hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- ── Sidebar Nav ── -->
+  <nav>
+    <div class="brand">
+      <h2>Microservices Guide</h2>
+      <p>Telegram Content Download</p>
+    </div>
+    <ul>
+      <li class="section">Foundations</li>
+      <li><a href="#monolith-vs-micro">1. Monolith vs Microservices</a></li>
+      <li><a href="#architecture">2. Our Architecture</a></li>
+      <li><a href="#docker-basics">3. Docker Fundamentals</a></li>
+      <li class="section">What We Built</li>
+      <li><a href="#services">4. The 7 Services</a></li>
+      <li><a href="#dockerfile">5. Dockerfile Deep Dive</a></li>
+      <li><a href="#multistage">6. Multi-Stage Builds</a></li>
+      <li><a href="#gateway">7. API Gateway</a></li>
+      <li><a href="#compose">8. Docker Compose</a></li>
+      <li class="section">Operations</li>
+      <li><a href="#networking">9. Docker Networking</a></li>
+      <li><a href="#makefile">10. Makefile & Scripts</a></li>
+      <li><a href="#registry">11. Registry & Image Tags</a></li>
+      <li><a href="#run">12. How To Run</a></li>
+      <li class="section">Reference</li>
+      <li><a href="#commands">13. Cheat Sheet</a></li>
+      <li><a href="#glossary">14. Glossary</a></li>
+    </ul>
+  </nav>
+
+  <!-- ── Main Content ── -->
+  <main>
+
+    <div class="hero">
+      <div class="tag">Engineering Reference</div>
+      <h1>Microservices & <span>Docker</span><br>Deep Dive</h1>
+      <p>Everything we built for the Telegram Content Download project — explained from first principles so you understand not just the what, but the why.</p>
+    </div>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 1. MONOLITH VS MICROSERVICES -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="monolith-vs-micro">
+      <div class="section-header">
+        <div class="section-number">1</div>
+        <h2>Monolith vs Microservices</h2>
+      </div>
+
+      <p>Before we changed anything, your project was a <strong>monolith</strong> — one single <code>server.js</code> file that handled authentication, reading Telegram groups, downloading media, and talking to Google Drive all at once.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title" style="color: var(--accent5);">⬛ Monolith (Before)</div>
+          <p>One process. One crash kills everything. You can't scale just the download feature. Every developer touches the same file. Deploy one tiny change? The whole app restarts.</p>
+        </div>
+        <div class="card">
+          <div class="card-title" style="color: var(--accent3);">✦ Microservices (After)</div>
+          <p>Each concern is its own process. Auth crashes? Downloads keep working. Need 5× more download capacity? Scale only that service. Teams own separate services independently.</p>
+        </div>
+      </div>
+
+      <h3>When microservices make sense</h3>
+      <table class="compare">
+        <thead>
+          <tr><th>Situation</th><th>Monolith</th><th>Microservices</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Early prototype / MVP</td><td class="yes">✓ Faster</td><td class="no">✗ Overhead</td></tr>
+          <tr><td>Services scale differently</td><td class="no">✗ Can't isolate</td><td class="yes">✓ Scale each independently</td></tr>
+          <tr><td>Multiple teams</td><td class="no">✗ Conflicts</td><td class="yes">✓ Own your service</td></tr>
+          <tr><td>Different tech per feature</td><td class="no">✗ One language</td><td class="yes">✓ Python, Node, Go — anything</td></tr>
+          <tr><td>Fault isolation needed</td><td class="no">✗ One crash, all down</td><td class="yes">✓ Isolated failures</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>The rule of thumb</strong>
+          Start as a monolith. When you feel pain — a team stepping on each other, one feature needing 10× the resources of others, deployment risk — that's when you split. We split here because the services are genuinely independent: auth doesn't know about downloads, downloads don't know about Google.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 2. ARCHITECTURE -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="architecture">
+      <div class="section-header">
+        <div class="section-number">2</div>
+        <h2>Our Architecture</h2>
+      </div>
+
+      <p>This is the full picture of how traffic flows through the system. The outside world only ever talks to the <strong>API Gateway</strong>. Every service lives on a private internal network.</p>
+
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-box blue">Browser / Angular UI<br><small style="color:var(--muted);font-size:11px;">localhost:4200</small></div>
+        </div>
+        <div class="flow-row"><div class="flow-arrow">↓ HTTP requests to /api/*</div></div>
+        <div class="flow-row">
+          <div class="flow-box yellow">API Gateway<br><small style="color:var(--muted);font-size:11px;">localhost:3000</small></div>
+        </div>
+        <div class="flow-row"><div class="flow-arrow">routes by path prefix</div></div>
+        <div class="flow-row">
+          <div class="flow-box green">/auth/* → auth-service :3001</div>
+          <div class="flow-box green">/groups/* → telegram-read :3002</div>
+          <div class="flow-box green">/download/* → tg-download :3003</div>
+        </div>
+        <div class="flow-row">
+          <div class="flow-box purple">/google/upload → g-upload :3004</div>
+          <div class="flow-box purple">/google/download → g-download :3005</div>
+        </div>
+        <div class="flow-label">All services communicate on an isolated Docker network — unreachable from outside except through the gateway</div>
+      </div>
+
+      <h3>Why an API Gateway?</h3>
+      <p>In production, you don't expose 7 ports to the internet. You expose <strong>one</strong>. The gateway is the single door into your system. It can handle:</p>
+      <ul class="bullet">
+        <li><strong>Routing</strong> — send each request to the right service</li>
+        <li><strong>Auth middleware</strong> — check JWT tokens before any service sees the request</li>
+        <li><strong>Rate limiting</strong> — throttle abusive callers in one place</li>
+        <li><strong>Logging</strong> — log every request once, not in every service</li>
+        <li><strong>SSL termination</strong> — handle HTTPS once at the edge</li>
+      </ul>
+
+      <div class="callout tip">
+        <div class="callout-icon">🔑</div>
+        <div class="callout-body">
+          <strong>Key insight: pathRewrite</strong>
+          When the gateway receives <code>GET /groups/123/content</code> it strips the prefix and forwards <code>GET /groups/123/content</code> to <code>telegram-read-service</code>. But for auth, <code>POST /auth/sign-in</code> becomes <code>POST /sign-in</code> — the <code>/auth</code> prefix is stripped because the auth service doesn't know it lives behind a gateway. This is what <code>pathRewrite</code> does in <code>http-proxy-middleware</code>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 3. DOCKER BASICS -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="docker-basics">
+      <div class="section-header">
+        <div class="section-number">3</div>
+        <h2>Docker Fundamentals</h2>
+      </div>
+
+      <p>Docker solves the <em>"works on my machine"</em> problem. It packages your code together with its exact runtime environment — OS libraries, Node version, config — into a portable unit.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">📦 Image</div>
+          <p>A read-only snapshot. Think of it like a ZIP file of your app + everything it needs to run. Built from a Dockerfile. Stored in a registry.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">🏃 Container</div>
+          <p>A running instance of an image. Like running a program from an executable. You can run 10 containers from the same image simultaneously.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">📋 Dockerfile</div>
+          <p>The recipe for building an image. A series of instructions: start from this base, copy these files, run this command, expose this port.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">🗄️ Registry</div>
+          <p>A server that stores images. Docker Hub is the public one. You push images to it, pull them anywhere — your laptop, a server, CI/CD.</p>
+        </div>
+      </div>
+
+      <h3>The mental model</h3>
+      <pre><code><span class="c"># An analogy:</span>
+<span class="c">#   Dockerfile  →  recipe (instructions)</span>
+<span class="c">#   Image       →  cake (built artifact)</span>
+<span class="c">#   Container   →  slice being eaten (running instance)</span>
+<span class="c">#   Registry    →  bakery shelf (storage)</span>
+
+<span class="c"># Build an image from a Dockerfile</span>
+docker build -t myapp:latest .
+
+<span class="c"># Run a container from that image</span>
+docker run -p 3000:3000 myapp:latest
+
+<span class="c"># Push image to Docker Hub</span>
+docker push myusername/myapp:latest
+
+<span class="c"># Pull image on another machine</span>
+docker pull myusername/myapp:latest</code></pre>
+
+      <h3>Layers — why order matters in a Dockerfile</h3>
+      <p>Every instruction in a Dockerfile creates a <strong>layer</strong>. Docker caches layers. If a layer hasn't changed, Docker reuses the cached version instead of re-running it.</p>
+
+      <div class="callout warn">
+        <div class="callout-icon">⚡</div>
+        <div class="callout-body">
+          <strong>Critical ordering rule</strong>
+          Always copy <code>package.json</code> and run <code>npm install</code> BEFORE copying your source code. Your source code changes constantly. Your dependencies change rarely. This way, <code>npm install</code> (the slow part) is cached and only re-runs when <code>package.json</code> actually changes.
+        </div>
+      </div>
+
+      <pre><code><span class="c"># WRONG — npm install re-runs on every code change</span>
+COPY . .
+RUN npm install
+
+<span class="c"># CORRECT — npm install cached unless package.json changes</span>
+COPY package*.json ./
+RUN npm install
+COPY . .</code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 4. THE 7 SERVICES -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="services">
+      <div class="section-header">
+        <div class="section-number">4</div>
+        <h2>The 7 Services</h2>
+      </div>
+
+      <p>Each service is completely self-contained. It has its own <code>package.json</code>, <code>server.js</code>, <code>Dockerfile</code>, and <code>.dockerignore</code>. No service imports code from another — they only communicate over HTTP.</p>
+
+      <table class="service-table">
+        <thead>
+          <tr><th>Service</th><th>Port</th><th>Responsibility</th><th>Key Routes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>auth-service</td>
+            <td>3001</td>
+            <td>Telegram login, OTP, 2FA, session management</td>
+            <td>POST /send-code, POST /sign-in, POST /2fa, GET /status</td>
+          </tr>
+          <tr>
+            <td>telegram-read-service</td>
+            <td>3002</td>
+            <td>Read groups, messages, photos from Telegram</td>
+            <td>GET /groups, GET /groups/:id/photo, GET /groups/:id/content</td>
+          </tr>
+          <tr>
+            <td>telegram-download-service</td>
+            <td>3003</td>
+            <td>Download media files from Telegram messages</td>
+            <td>POST /download</td>
+          </tr>
+          <tr>
+            <td>google-upload-service</td>
+            <td>3004</td>
+            <td>Upload files to Google Drive</td>
+            <td>POST /upload</td>
+          </tr>
+          <tr>
+            <td>google-download-service</td>
+            <td>3005</td>
+            <td>Download files from Google Drive</td>
+            <td>POST /download</td>
+          </tr>
+          <tr>
+            <td>api-gateway</td>
+            <td>3000</td>
+            <td>Route external traffic to correct service. No business logic.</td>
+            <td>All of the above, prefixed and proxied</td>
+          </tr>
+          <tr>
+            <td>ui-service</td>
+            <td>4200 (→80)</td>
+            <td>Angular app compiled to static files, served by nginx</td>
+            <td>Static HTML/JS/CSS + nginx proxy to gateway</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Why does each service have a /health endpoint?</h3>
+      <p>Every service exposes <code>GET /health</code> which returns <code>{"status":"ok"}</code>. This is a production standard. Load balancers, Kubernetes, and monitoring tools call this endpoint periodically to know if the service is alive. If it stops responding, traffic is redirected automatically. You can also curl it yourself to check a specific service without testing business logic.</p>
+
+      <pre><code>curl http://localhost:3001/health
+<span class="c"># → {"status":"ok","service":"auth-service"}</span>
+
+curl http://localhost:3002/health
+<span class="c"># → {"status":"ok","service":"telegram-read-service"}</span></code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 5. DOCKERFILE DEEP DIVE -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="dockerfile">
+      <div class="section-header">
+        <div class="section-number">5</div>
+        <h2>Dockerfile Deep Dive</h2>
+      </div>
+
+      <p>Let's walk through the auth-service Dockerfile line by line. Every decision has a reason.</p>
+
+      <pre><code><span class="c"># ── Stage 1: Install dependencies ──────────────────────────────────────</span>
+<span class="c"># FROM tells Docker: start from this base image.</span>
+<span class="c"># node:20-alpine = Node.js 20 on Alpine Linux.</span>
+<span class="c"># Alpine is a minimal Linux distro (~5MB). Ubuntu is ~100MB.</span>
+<span class="c"># Smaller base = smaller image = faster pulls = less attack surface.</span>
+<span class="c"># "AS builder" names this stage so we can reference it later.</span>
+<span class="k">FROM</span> node:20-alpine <span class="k">AS</span> builder
+
+<span class="c"># WORKDIR sets the working directory inside the container.</span>
+<span class="c"># All subsequent commands run from /app.</span>
+<span class="c"># If /app doesn't exist, Docker creates it.</span>
+<span class="k">WORKDIR</span> /app
+
+<span class="c"># Copy ONLY package files first — not the whole source code.</span>
+<span class="c"># package*.json matches both package.json and package-lock.json.</span>
+<span class="c"># The lock file ensures exact versions are installed, not latest.</span>
+<span class="k">COPY</span> package*.json ./
+
+<span class="c"># npm ci = "clean install".</span>
+<span class="c"># Unlike npm install, it uses package-lock.json exactly.</span>
+<span class="c"># --omit=dev skips devDependencies — we don't need nodemon in production.</span>
+<span class="k">RUN</span> npm ci --omit=dev
+
+<span class="c"># NOW copy source code. This layer only busts when code changes.</span>
+<span class="c"># If you only changed server.js, Docker reuses the npm ci layer above.</span>
+<span class="k">COPY</span> . .
+
+<span class="c"># ── Stage 2: Runtime image ──────────────────────────────────────────────</span>
+<span class="c"># Start fresh from the same base — no npm, no build tools, no cache.</span>
+<span class="c"># This is the final image that actually runs in production.</span>
+<span class="k">FROM</span> node:20-alpine
+
+<span class="k">WORKDIR</span> /app
+
+<span class="c"># Copy ONLY the built artifacts from Stage 1.</span>
+<span class="c"># --from=builder references the named stage above.</span>
+<span class="c"># We get node_modules and server.js. Nothing else.</span>
+<span class="k">COPY</span> --from=builder /app/node_modules ./node_modules
+<span class="k">COPY</span> --from=builder /app/server.js ./
+
+<span class="c"># EXPOSE documents which port this service uses.</span>
+<span class="c"># This is informational — it doesn't actually open the port.</span>
+<span class="c"># Port binding happens in docker-compose.yml or docker run -p.</span>
+<span class="k">EXPOSE</span> <span class="num">3001</span>
+
+<span class="c"># Run as the 'node' user, not root.</span>
+<span class="c"># Running containers as root is a security risk.</span>
+<span class="c"># If the container is compromised, root access = host access.</span>
+<span class="c"># The 'node' user is a non-privileged user built into the node image.</span>
+<span class="k">USER</span> node
+
+<span class="c"># CMD is the default command to run when the container starts.</span>
+<span class="c"># Array form (exec form) is preferred — no shell wrapping,</span>
+<span class="c"># so signals like SIGTERM reach the node process directly.</span>
+<span class="k">CMD</span> [<span class="s">"node"</span>, <span class="s">"server.js"</span>]</code></pre>
+
+      <h3>What is .dockerignore?</h3>
+      <p>When you run <code>docker build</code>, Docker sends all files in the directory to the Docker daemon as the "build context". Without a <code>.dockerignore</code>, it sends <code>node_modules</code> too — that's hundreds of megabytes being copied on every build even though Docker re-installs them inside the container anyway.</p>
+
+      <pre><code><span class="c"># .dockerignore — these files are NEVER sent to Docker</span>
+node_modules        <span class="c"># re-installed inside the container by npm ci</span>
+npm-debug.log*      <span class="c"># debug artifacts</span>
+.env                <span class="c"># NEVER bake secrets into images</span>
+.env.*              <span class="c"># same for any .env variant</span>
+!.env.example       <span class="c"># exception: .env.example is safe to include</span></code></pre>
+
+      <div class="callout danger">
+        <div class="callout-icon">🚨</div>
+        <div class="callout-body">
+          <strong>Never bake secrets into a Docker image</strong>
+          If your <code>.env</code> file gets copied into an image and that image is pushed to a registry, anyone who pulls the image can read your API keys. Always pass secrets as environment variables at runtime — through <code>docker-compose.yml</code> or your cloud provider's secrets manager.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 6. MULTI-STAGE BUILDS -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="multistage">
+      <div class="section-header">
+        <div class="section-number">6</div>
+        <h2>Multi-Stage Builds</h2>
+      </div>
+
+      <p>Multi-stage builds let you use one Dockerfile to do heavy work (installing, compiling) in one stage and then create a clean, minimal image from only the output. The intermediate stages are thrown away.</p>
+
+      <h3>Why this matters — image size comparison</h3>
+      <table class="compare">
+        <thead><tr><th>Approach</th><th>What's in the image</th><th>Approx size</th></tr></thead>
+        <tbody>
+          <tr><td>Single stage (naive)</td><td>Node, npm, devDependencies, build cache, source maps</td><td>~800MB</td></tr>
+          <tr><td>Multi-stage Node</td><td>Node runtime + production node_modules only</td><td>~150MB</td></tr>
+          <tr><td>Multi-stage UI (nginx)</td><td>nginx + compiled static HTML/JS/CSS only, no Node</td><td>~25MB</td></tr>
+        </tbody>
+      </table>
+
+      <h3>The UI service — 3 stages</h3>
+      <p>The Angular UI has the most interesting Dockerfile because it uses <strong>3 stages</strong> and the final image doesn't even contain Node.js:</p>
+
+      <pre><code><span class="c"># Stage 1: Install ALL dependencies (including devDependencies)</span>
+<span class="c"># We need @angular/cli, typescript, etc. to compile — not at runtime.</span>
+<span class="k">FROM</span> node:20-alpine <span class="k">AS</span> deps
+<span class="k">WORKDIR</span> /app
+<span class="k">COPY</span> package*.json ./
+<span class="k">RUN</span> npm ci   <span class="c"># includes devDependencies this time</span>
+
+<span class="c"># Stage 2: Compile TypeScript → JavaScript bundles</span>
+<span class="c"># ng build reads angular.json, compiles everything, outputs to dist/</span>
+<span class="k">FROM</span> node:20-alpine <span class="k">AS</span> builder
+<span class="k">WORKDIR</span> /app
+<span class="k">COPY</span> --from=deps /app/node_modules ./node_modules
+<span class="k">COPY</span> . .
+<span class="k">RUN</span> npm run build   <span class="c"># produces: dist/ui/browser/*.js *.css index.html</span>
+
+<span class="c"># Stage 3: Serve with nginx — Node is completely gone</span>
+<span class="c"># nginx:alpine is ~7MB. It serves static files incredibly fast.</span>
+<span class="k">FROM</span> nginx:alpine
+
+<span class="c"># Copy ONLY the compiled output — HTML, CSS, JS, assets.</span>
+<span class="c"># Node, npm, TypeScript, Angular CLI — none of it comes along.</span>
+<span class="k">COPY</span> --from=builder /app/dist/ui/browser /usr/share/nginx/html
+
+<span class="c"># Custom nginx config for Angular's client-side routing</span>
+<span class="k">COPY</span> nginx.conf /etc/nginx/conf.d/default.conf
+
+<span class="k">EXPOSE</span> <span class="num">80</span>
+<span class="k">CMD</span> [<span class="s">"nginx"</span>, <span class="s">"-g"</span>, <span class="s">"daemon off;"</span>]</code></pre>
+
+      <h3>Why nginx for the UI?</h3>
+      <p>Angular is just HTML, CSS, and JavaScript after compilation. You don't need Node.js to serve static files — that's wasteful. nginx is a battle-hardened web server purpose-built for serving static content. It handles thousands of simultaneous connections with minimal memory.</p>
+
+      <h3>The nginx.conf — Angular routing fix</h3>
+      <pre><code><span class="c"># Without this config, refreshing /groups/123 returns 404.</span>
+<span class="c"># Why? nginx looks for a file called "groups/123" — it doesn't exist.</span>
+<span class="c"># Angular routes are handled client-side, in the browser.</span>
+<span class="c"># So for any URL that isn't a real file, we serve index.html.</span>
+<span class="c"># Angular's router then reads the URL and renders the right component.</span>
+
+location / {
+    try_files $uri $uri/ /index.html;
+    <span class="c"># try: the exact file → the exact directory → fallback to index.html</span>
+}
+
+<span class="c"># Proxy /api/* calls to the API gateway</span>
+<span class="c"># The Angular app calls /api/groups — nginx forwards it to the gateway.</span>
+<span class="c"># This means the browser never needs to know the gateway's address.</span>
+location /api/ {
+    proxy_pass http://api-gateway:3000/;
+}</code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 7. API GATEWAY -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="gateway">
+      <div class="section-header">
+        <div class="section-number">7</div>
+        <h2>API Gateway — Production Reverse Proxy</h2>
+      </div>
+
+      <p>The gateway's job is exactly one thing: <strong>receive a request, forward it to the right service, return the response</strong>. It has zero business logic. We use <code>http-proxy-middleware</code> — the same library used inside Angular's dev server proxy.</p>
+
+      <pre><code><span class="k">const</span> { createProxyMiddleware } = <span class="n">require</span>(<span class="s">'http-proxy-middleware'</span>);
+
+<span class="c">// Service URLs come from environment variables.</span>
+<span class="c">// Locally: AUTH_SERVICE_URL=http://localhost:3001</span>
+<span class="c">// In Docker: AUTH_SERVICE_URL=http://auth-service:3001</span>
+<span class="c">// The code is identical — only the env var changes.</span>
+<span class="k">const</span> <span class="v">AUTH_URL</span> = process.env.AUTH_SERVICE_URL || <span class="s">'http://localhost:3001'</span>;
+
+<span class="c">// This proxy middleware intercepts every request to /auth/* and:</span>
+<span class="c">//   1. Strips the /auth prefix (pathRewrite)</span>
+<span class="c">//   2. Forwards the request to AUTH_URL</span>
+<span class="c">//   3. Streams the response back to the original caller</span>
+app.use(<span class="s">'/auth'</span>, <span class="n">createProxyMiddleware</span>({
+  target: <span class="v">AUTH_URL</span>,
+  changeOrigin: <span class="k">true</span>,
+  <span class="c">// pathRewrite: remove the /auth prefix before forwarding</span>
+  <span class="c">// so POST /auth/sign-in becomes POST /sign-in on auth-service</span>
+  pathRewrite: { <span class="s">'^/auth'</span>: <span class="s">''</span> },
+}));</code></pre>
+
+      <h3>What changeOrigin does</h3>
+      <p><code>changeOrigin: true</code> rewrites the <code>Host</code> header of the forwarded request to match the target. Without it, the downstream service receives <code>Host: localhost:3000</code> (the gateway's address) instead of its own address. Some services use the Host header for CORS checks or routing, so this is important.</p>
+
+      <h3>Environment-based service discovery</h3>
+      <p>Notice the gateway doesn't hardcode <code>http://auth-service:3001</code>. It reads from <code>process.env.AUTH_SERVICE_URL</code>. This means:</p>
+      <ul class="bullet">
+        <li><strong>Locally without Docker:</strong> set <code>AUTH_SERVICE_URL=http://localhost:3001</code></li>
+        <li><strong>In Docker Compose:</strong> set <code>AUTH_SERVICE_URL=http://auth-service:3001</code> (Docker DNS resolves service names)</li>
+        <li><strong>In Kubernetes:</strong> set <code>AUTH_SERVICE_URL=http://auth-service.default.svc.cluster.local:3001</code></li>
+      </ul>
+      <p>The gateway code never changes. Only config changes. This is a core principle: <strong>12-Factor App — store config in environment variables</strong>.</p>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 8. DOCKER COMPOSE -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="compose">
+      <div class="section-header">
+        <div class="section-number">8</div>
+        <h2>Docker Compose</h2>
+      </div>
+
+      <p><code>docker-compose.yml</code> is an orchestration file. Instead of running 7 separate <code>docker run</code> commands with all their flags, you define everything once and run <code>docker compose up</code>.</p>
+
+      <pre><code><span class="c"># The version of the compose file format</span>
+version: <span class="s">"3.9"</span>
+
+<span class="c"># Define an internal network all services share</span>
+networks:
+  app-network:
+    driver: bridge   <span class="c"># bridge = private network on the host machine</span>
+
+services:
+  auth-service:
+    <span class="c"># build: tells compose to build the image from this Dockerfile</span>
+    build:
+      context: ./services/auth-service   <span class="c"># directory with Dockerfile</span>
+      dockerfile: Dockerfile
+
+    <span class="c"># image: how to tag the built image</span>
+    <span class="c"># ${REGISTRY:-placeholder} means: use $REGISTRY env var, fall back to "placeholder"</span>
+    image: ${REGISTRY:-placeholder}/auth-service:latest
+
+    <span class="c"># env_file: load all variables from .env into this container</span>
+    env_file: .env
+
+    <span class="c"># environment: override/add specific vars (takes precedence over env_file)</span>
+    environment:
+      PORT: <span class="num">3001</span>
+
+    <span class="c"># ports: host:container — maps container port to your laptop</span>
+    <span class="c"># "3001:3001" means: localhost:3001 on your machine → port 3001 in container</span>
+    ports:
+      - <span class="s">"3001:3001"</span>
+
+    <span class="c"># networks: join the shared internal network</span>
+    networks:
+      - app-network
+
+    <span class="c"># restart: unless-stopped — auto-restart if the container crashes</span>
+    <span class="c"># (unless you deliberately stopped it with docker compose stop)</span>
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+    environment:
+      PORT: <span class="num">3000</span>
+      <span class="c"># Inside Docker, services find each other by service name.</span>
+      <span class="c"># Docker Compose creates DNS entries for each service on the network.</span>
+      <span class="c"># So "auth-service" resolves to the auth-service container's IP.</span>
+      AUTH_SERVICE_URL: http://auth-service:<span class="num">3001</span>
+      READ_SERVICE_URL: http://telegram-read-service:<span class="num">3002</span>
+    ports:
+      - <span class="s">"3000:3000"</span>
+    <span class="c"># depends_on: don't start gateway until these services are up</span>
+    depends_on:
+      - auth-service
+      - telegram-read-service
+    networks:
+      - app-network</code></pre>
+
+      <h3>depends_on — a subtle gotcha</h3>
+
+      <div class="callout warn">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <strong>depends_on only waits for the container to START, not for the app inside to be READY</strong>
+          A Node.js service might take 2–3 seconds to boot after the container starts. If the gateway starts making requests immediately, it'll get connection refused. In production, you solve this with health checks in compose (<code>condition: service_healthy</code>) or retry logic in the gateway. For local dev, the default behavior is usually fine.
+        </div>
+      </div>
+
+      <h3>Useful docker compose commands</h3>
+      <pre><code><span class="c"># Start everything, rebuilding changed images</span>
+docker compose up --build
+
+<span class="c"># Start in background (detached mode) — terminal isn't blocked</span>
+docker compose up --build -d
+
+<span class="c"># Tail logs from all services</span>
+docker compose logs -f
+
+<span class="c"># Tail logs from one specific service</span>
+docker compose logs -f auth-service
+
+<span class="c"># See what's running</span>
+docker compose ps
+
+<span class="c"># Stop all containers (keeps the images)</span>
+docker compose down
+
+<span class="c"># Stop AND remove volumes (wipes any persistent data)</span>
+docker compose down -v
+
+<span class="c"># Run a one-off command inside a running container</span>
+docker compose exec auth-service sh   <span class="c"># open a shell</span>
+docker compose exec auth-service node -e "console.log(process.env.API_ID)"</code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 9. DOCKER NETWORKING -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="networking">
+      <div class="section-header">
+        <div class="section-number">9</div>
+        <h2>Docker Networking</h2>
+      </div>
+
+      <p>This is the concept that ties everything together. Understanding Docker networking explains why services can find each other by name inside Docker, but you access them by <code>localhost:PORT</code> from your browser.</p>
+
+      <div class="card">
+        <div class="card-title">Two separate worlds</div>
+        <p>Your laptop has IP <code>127.0.0.1</code>. Containers have their own IPs inside Docker's virtual network. Docker creates a bridge between the two — that's what port mapping (<code>-p 3001:3001</code>) does.</p>
+      </div>
+
+      <pre><code><span class="c">┌─────────────────────────────────────────────────────────┐</span>
+<span class="c">│  Your MacBook (host machine)                            │</span>
+<span class="c">│                                                         │</span>
+<span class="c">│  Browser → localhost:4200 ──────────────────────┐       │</span>
+<span class="c">│  curl localhost:3000 ───────────────────────┐   │       │</span>
+<span class="c">│                                             │   │       │</span>
+<span class="c">│  ┌──────────────────── Docker network ──────┼───┼────┐  │</span>
+<span class="c">│  │                                          │   │    │  │</span>
+<span class="c">│  │  api-gateway:3000 ◄────────────────────◄─┘   │    │  │</span>
+<span class="c">│  │       │                                       │    │  │</span>
+<span class="c">│  │       ├──► auth-service:3001                  │    │  │</span>
+<span class="c">│  │       ├──► telegram-read-service:3002          │    │  │</span>
+<span class="c">│  │       └──► telegram-download-service:3003      │    │  │</span>
+<span class="c">│  │                                                │    │  │</span>
+<span class="c">│  │  ui-service:80 ◄───────────────────────────◄──┘    │  │</span>
+<span class="c">│  └────────────────────────────────────────────────────┘  │</span>
+└─────────────────────────────────────────────────────────┘</span>
+
+<span class="c">Outside Docker: use localhost:PORT</span>
+<span class="c">Inside Docker: use service-name:PORT (Docker DNS resolves service names)</span></code></pre>
+
+      <h3>How Docker DNS works</h3>
+      <p>When you add services to the same <code>networks</code> in compose, Docker automatically creates DNS entries. So inside any container on <code>app-network</code>:</p>
+      <pre><code><span class="c"># Inside the api-gateway container:</span>
+curl http://auth-service:3001/health       <span class="c"># works — Docker resolves 'auth-service'</span>
+curl http://localhost:3001/health           <span class="c"># fails — localhost is the gateway itself</span>
+
+<span class="c"># From your MacBook:</span>
+curl http://localhost:3001/health           <span class="c"># works — port mapped to host</span>
+curl http://auth-service:3001/health        <span class="c"># fails — 'auth-service' doesn't exist on host DNS</span></code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 10. MAKEFILE -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="makefile">
+      <div class="section-header">
+        <div class="section-number">10</div>
+        <h2>Makefile & Build Scripts</h2>
+      </div>
+
+      <p>A <code>Makefile</code> gives your project a standard interface. Anyone who clones the repo can run <code>make build</code>, <code>make push</code>, <code>make up</code> without reading documentation. It's the convention in almost every production engineering team.</p>
+
+      <pre><code><span class="c"># Variables at the top — override with: make build REGISTRY=yourusername</span>
+REGISTRY  ?= placeholder           <span class="c"># ?= means "use this if not already set"</span>
+GIT_SHA   := $(shell git rev-parse --short HEAD)   <span class="c"># current commit hash</span>
+
+<span class="c"># .PHONY tells make these aren't file targets — they're commands</span>
+.PHONY: build push save load up down logs clean
+
+build:
+    @for svc in auth-service telegram-read-service ...; do \
+        docker build \
+            -t $(REGISTRY)/$$svc:latest \      <span class="c"># tag with :latest</span>
+            -t $(REGISTRY)/$$svc:$(GIT_SHA) \  <span class="c"># tag with git commit hash</span>
+            ./services/$$svc; \
+    done</code></pre>
+
+      <h3>Why tag with git SHA?</h3>
+      <p>The <code>:latest</code> tag is convenient but dangerous in production. If you deploy <code>:latest</code> and it breaks, how do you rollback? You don't know which version <code>:latest</code> was before. But if you deploy <code>:a3f5c8b</code> (the git commit hash), you can always redeploy the previous commit's hash. Every image is permanently traceable to an exact commit.</p>
+
+      <pre><code><span class="c"># Tag strategy:</span>
+your-registry/auth-service:latest     <span class="c"># always the most recent build</span>
+your-registry/auth-service:a3f5c8b   <span class="c"># permanent — exactly commit a3f5c8b</span>
+your-registry/auth-service:v1.2.0    <span class="c"># semantic version (optional)</span></code></pre>
+
+      <h3>docker save and docker load</h3>
+      <p>Sometimes you don't have a registry — maybe you're on a secure network, or you want to send an image to a colleague. <code>docker save</code> exports an image as a <code>.tar</code> file. <code>docker load</code> imports it back.</p>
+
+      <pre><code><span class="c"># Save image to a file</span>
+docker save placeholder/auth-service:latest -o auth-service.tar
+
+<span class="c"># Transfer the .tar to another machine (scp, USB, email, etc.)</span>
+
+<span class="c"># Load it back into Docker on that machine</span>
+docker load -i auth-service.tar
+
+<span class="c"># Now you can run it</span>
+docker run placeholder/auth-service:latest</code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 11. REGISTRY & TAGS -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="registry">
+      <div class="section-header">
+        <div class="section-number">11</div>
+        <h2>Registry & Image Tags</h2>
+      </div>
+
+      <p>A registry is where Docker images live remotely. Docker Hub is the default public one. When you're ready to use a real registry, here's the workflow:</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Create a Docker Hub account</div>
+            <div class="step-desc">Go to hub.docker.com. Your username becomes your registry prefix — e.g. <code>sauravmehta/auth-service</code>.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Login from terminal</div>
+            <div class="step-desc"><code>docker login</code> — prompts for username and password. Stores credentials locally so <code>docker push</code> works.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Build with your registry prefix</div>
+            <div class="step-desc"><code>make build REGISTRY=yourusername</code> — builds and tags all images as <code>yourusername/service-name:latest</code>.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Push all images</div>
+            <div class="step-desc"><code>make push REGISTRY=yourusername</code> — uploads all images to Docker Hub. Now anyone can pull them.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Pull on any machine</div>
+            <div class="step-desc"><code>docker pull yourusername/auth-service:latest</code> — works from any machine with Docker installed. No code needed.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">🏭</div>
+        <div class="callout-body">
+          <strong>Other registries in the wild</strong>
+          Docker Hub is public. In companies you'll use private registries: AWS ECR (Elastic Container Registry), Google Artifact Registry, GitHub Container Registry (ghcr.io), or a self-hosted Harbor. The workflow is identical — just change the registry URL prefix.
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 12. HOW TO RUN -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="run">
+      <div class="section-header">
+        <div class="section-number">12</div>
+        <h2>How To Run This Project</h2>
+      </div>
+
+      <h3>Prerequisites</h3>
+      <div class="tags">
+        <span class="tag-pill blue">Docker Desktop installed</span>
+        <span class="tag-pill green">Docker Compose v2+</span>
+        <span class="tag-pill yellow">Telegram API_ID and API_HASH</span>
+        <span class="tag-pill purple">.env file created</span>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Create your .env file</div>
+            <div class="step-desc">
+              <code>cp .env.example .env</code> then fill in <code>API_ID</code> and <code>API_HASH</code> from <a href="https://my.telegram.org" style="color:var(--accent)">my.telegram.org</a>. Never commit this file.
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Start everything</div>
+            <div class="step-desc">Run <code>npm run dev</code> (or <code>make up</code>). Docker builds all 7 images and starts all containers. First run takes ~3–5 minutes. Subsequent runs are fast because layers are cached.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Verify all services are healthy</div>
+            <div class="step-desc">
+              <code>docker compose ps</code> should show all 7 containers as <code>running</code>. Then hit each health endpoint to confirm.
+            </div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Open the app</div>
+            <div class="step-desc">
+              Navigate to <code>http://localhost:4200</code> in your browser. The UI is served by nginx. API calls go through the gateway at <code>:3000</code>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <pre><code><span class="c"># Full workflow</span>
+cp .env.example .env
+<span class="c"># edit .env with your API_ID and API_HASH</span>
+
+npm run dev               <span class="c"># start all 7 services</span>
+npm run logs              <span class="c"># tail all logs</span>
+npm run stop              <span class="c"># stop everything</span>
+
+<span class="c"># Or using make:</span>
+make up                   <span class="c"># start detached</span>
+make logs                 <span class="c"># tail logs</span>
+make down                 <span class="c"># stop</span>
+make build REGISTRY=you   <span class="c"># build images with your registry</span>
+make push  REGISTRY=you   <span class="c"># push to Docker Hub</span>
+make save                 <span class="c"># export images as .tar files</span></code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 13. CHEAT SHEET -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="commands">
+      <div class="section-header">
+        <div class="section-number">13</div>
+        <h2>Docker Cheat Sheet</h2>
+      </div>
+
+      <h3>Images</h3>
+      <pre><code>docker images                          <span class="c"># list all local images</span>
+docker build -t name:tag .             <span class="c"># build image from Dockerfile in current dir</span>
+docker rmi name:tag                    <span class="c"># remove an image</span>
+docker pull name:tag                   <span class="c"># download image from registry</span>
+docker push name:tag                   <span class="c"># upload image to registry</span>
+docker save name:tag -o file.tar       <span class="c"># export image to file</span>
+docker load -i file.tar                <span class="c"># import image from file</span>
+docker image prune                     <span class="c"># remove unused images (frees disk)</span></code></pre>
+
+      <h3>Containers</h3>
+      <pre><code>docker ps                              <span class="c"># list running containers</span>
+docker ps -a                           <span class="c"># list all containers including stopped</span>
+docker run -p 3000:3000 name:tag       <span class="c"># run container, map port</span>
+docker run -d name:tag                 <span class="c"># run in background (detached)</span>
+docker run --rm name:tag               <span class="c"># auto-remove container when it exits</span>
+docker stop container-id               <span class="c"># gracefully stop container (SIGTERM)</span>
+docker kill container-id               <span class="c"># force kill container (SIGKILL)</span>
+docker rm container-id                 <span class="c"># remove stopped container</span>
+docker logs container-id -f            <span class="c"># tail logs from container</span>
+docker exec -it container-id sh        <span class="c"># open interactive shell inside container</span>
+docker inspect container-id            <span class="c"># detailed JSON info about container</span></code></pre>
+
+      <h3>Docker Compose</h3>
+      <pre><code>docker compose up                      <span class="c"># start all services (blocking)</span>
+docker compose up -d                   <span class="c"># start all services (background)</span>
+docker compose up --build              <span class="c"># rebuild changed images before starting</span>
+docker compose down                    <span class="c"># stop and remove containers</span>
+docker compose ps                      <span class="c"># show status of all services</span>
+docker compose logs -f                 <span class="c"># tail logs from all services</span>
+docker compose logs -f auth-service    <span class="c"># tail logs from one service</span>
+docker compose exec auth-service sh    <span class="c"># shell into running container</span>
+docker compose build                   <span class="c"># build all images (don't start)</span>
+docker compose pull                    <span class="c"># pull all images from registry</span>
+docker compose restart auth-service    <span class="c"># restart one service</span></code></pre>
+
+      <h3>Cleanup</h3>
+      <pre><code>docker system prune                    <span class="c"># remove all unused containers, networks, images</span>
+docker system prune -a                 <span class="c"># also remove images not used by any container</span>
+docker volume prune                    <span class="c"># remove unused volumes</span>
+docker network prune                   <span class="c"># remove unused networks</span>
+docker system df                       <span class="c"># show disk usage by Docker</span></code></pre>
+    </section>
+
+    <!-- ─────────────────────────────────────────────────── -->
+    <!-- 14. GLOSSARY -->
+    <!-- ─────────────────────────────────────────────────── -->
+    <section class="section" id="glossary">
+      <div class="section-header">
+        <div class="section-number">14</div>
+        <h2>Glossary</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-title">API Gateway</div>
+        <p>The single entry point for all client requests. Routes to the correct microservice. Handles cross-cutting concerns like auth, logging, rate limiting.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Bridge Network</div>
+        <p>Docker's default network driver for containers on the same host. Creates a virtual network where containers can talk to each other by name.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Build Context</div>
+        <p>The directory Docker sends to the daemon when building. Everything in it can be referenced in the Dockerfile via COPY. .dockerignore reduces this.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Container</div>
+        <p>A running instance of a Docker image. Isolated process with its own filesystem, network, and resource limits. Ephemeral — killed containers disappear.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Dockerfile</div>
+        <p>A text file with instructions to build a Docker image. Each instruction creates a cached layer. Order matters for cache efficiency.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Image</div>
+        <p>A read-only, layered snapshot of a filesystem. Built from a Dockerfile. Run to create containers. Stored in registries.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Layer</div>
+        <p>Each Dockerfile instruction (RUN, COPY, etc.) creates a layer. Layers are cached. Unchanged layers are reused across builds for speed.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Microservice</div>
+        <p>A small, independently deployable service that does one thing well. Communicates with other services over a network (HTTP, gRPC, etc.).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Multi-stage Build</div>
+        <p>A Dockerfile with multiple FROM statements. Each stage can copy artifacts from previous stages. Final image only contains what you explicitly copy in.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">npm ci</div>
+        <p>"Clean install". Uses package-lock.json for exact versions. Faster and more reproducible than npm install. The right choice for Docker and CI/CD.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">pathRewrite</div>
+        <p>In http-proxy-middleware: strip or transform the URL path before forwarding. Used so downstream services don't need to know they're behind a gateway.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Registry</div>
+        <p>A server for storing and distributing Docker images. Docker Hub is the public default. Companies use private registries (ECR, GCR, GHCR, Harbor).</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Reverse Proxy</div>
+        <p>A server that forwards client requests to backend servers. The client doesn't know which server responded. nginx and the API gateway are reverse proxies.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Service (in compose)</div>
+        <p>A named container definition in docker-compose.yml. Compose manages its lifecycle, network membership, and environment.</p>
+      </div>
+      <div class="card">
+        <div class="card-title">Volume</div>
+        <p>Persistent storage that survives container restarts. Containers are ephemeral — when they stop, data is lost unless stored in a volume.</p>
+      </div>
+
+    </section>
+
+    <hr>
+    <p style="text-align:center; color: var(--muted); font-size: 13px; padding-bottom: 48px;">
+      Telegram Content Download Project · Microservices Reference · Saurav Mehta
+    </p>
+
+  </main>
+</div>
+</body>
+</html>

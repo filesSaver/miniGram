@@ -1,0 +1,61 @@
+@if (step() === 'checking') {
+  <div class="fullpage-center">
+    <p class="checking">Checking authentication...</p>
+  </div>
+}
+
+@if (step() === 'phone') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Sign in to Telegram</h1>
+      <p class="subtitle">Enter your phone number to receive a code</p>
+      <div class="input-group">
+        <input type="tel" placeholder="+91 9876543210"
+          [ngModel]="phoneNumber()" (ngModelChange)="phoneNumber.set($event)" />
+        <button (click)="sendCode()" [disabled]="loading() || !phoneNumber()">
+          {{ loading() ? 'Sending...' : 'Send Code' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+    </div>
+  </div>
+}
+
+@if (step() === 'otp') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Enter OTP</h1>
+      <p class="subtitle">Code sent to {{ phoneNumber() }}</p>
+      <div class="input-group">
+        <input type="text" placeholder="12345" maxlength="5"
+          [ngModel]="code()" (ngModelChange)="code.set($event)" />
+        <button (click)="signIn()" [disabled]="loading() || !code()">
+          {{ loading() ? 'Verifying...' : 'Verify' }}
+        </button>
+      </div>
+      <button class="link" (click)="step.set('phone')">← Change number</button>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+    </div>
+  </div>
+}
+
+@if (step() === 'two-fa') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Two-Factor Auth</h1>
+      <p class="subtitle">Your account has 2FA enabled</p>
+      <div class="input-group">
+        <input type="password" placeholder="2FA Password"
+          [ngModel]="password()" (ngModelChange)="password.set($event)" />
+        <button (click)="submit2FA()" [disabled]="loading() || !password()">
+          {{ loading() ? 'Verifying...' : 'Submit' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+    </div>
+  </div>
+}
+
+@if (step() === 'done') {
+  <router-outlet />
+}

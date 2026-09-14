@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Build Journal — Errors, Fixes & Decisions</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222638;
+      --border: #2e3248;
+      --accent: #6c8fff;
+      --accent2: #a78bfa;
+      --accent3: #34d399;
+      --accent4: #f59e0b;
+      --accent5: #f87171;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --code-bg: #0d1117;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .layout { display: flex; min-height: 100vh; }
+
+    nav {
+      width: 280px;
+      min-width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      padding: 32px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    nav .brand {
+      padding: 0 24px 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+    }
+    nav .brand h2 { font-size: 14px; color: var(--accent5); letter-spacing: 0.08em; text-transform: uppercase; }
+    nav .brand p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    nav ul { list-style: none; padding: 0 12px; }
+    nav ul li a {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 6px;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    nav ul li a:hover { background: var(--surface2); color: var(--text); }
+    nav ul li.section {
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--border);
+      padding: 16px 12px 4px;
+      font-weight: 600;
+    }
+
+    main {
+      flex: 1;
+      max-width: 900px;
+      padding: 48px 56px;
+      overflow-x: hidden;
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, #1a1d27 0%, #1e2235 100%);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px;
+      margin-bottom: 56px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 240px; height: 240px;
+      background: radial-gradient(circle, rgba(248,113,113,0.10) 0%, transparent 70%);
+      border-radius: 50%;
+    }
+    .hero .tag {
+      display: inline-block;
+      background: rgba(248,113,113,0.12);
+      color: var(--accent5);
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 99px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(248,113,113,0.3);
+    }
+    .hero h1 { font-size: 32px; font-weight: 700; line-height: 1.2; margin-bottom: 12px; }
+    .hero h1 span { color: var(--accent5); }
+    .hero p { color: var(--muted); font-size: 16px; max-width: 600px; }
+
+    /* Sections */
+    .section { margin-bottom: 72px; scroll-margin-top: 32px; }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-number {
+      width: 32px; height: 32px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700;
+      flex-shrink: 0;
+    }
+    h2 { font-size: 22px; font-weight: 700; }
+    h3 { font-size: 16px; font-weight: 600; color: var(--accent2); margin: 28px 0 10px; }
+    h4 { font-size: 14px; font-weight: 600; color: var(--accent3); margin: 20px 0 8px; }
+
+    p { color: var(--muted); margin-bottom: 14px; }
+    p strong { color: var(--text); }
+
+    /* Error block — the key component of this doc */
+    .error-block {
+      border: 1px solid rgba(248,113,113,0.3);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .error-header {
+      background: rgba(248,113,113,0.10);
+      border-bottom: 1px solid rgba(248,113,113,0.2);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .error-badge {
+      background: var(--accent5);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .error-title { font-size: 14px; font-weight: 600; color: var(--accent5); }
+    .error-body { padding: 20px; }
+
+    .fix-block {
+      border: 1px solid rgba(52,211,153,0.3);
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 32px;
+    }
+    .fix-header {
+      background: rgba(52,211,153,0.08);
+      border-bottom: 1px solid rgba(52,211,153,0.2);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .fix-badge {
+      background: var(--accent3);
+      color: #0f1117;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .fix-title { font-size: 14px; font-weight: 600; color: var(--accent3); }
+    .fix-body { padding: 20px; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+    .card-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .card p { margin: 0; font-size: 13px; }
+    .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 700px) { .card-grid { grid-template-columns: 1fr; } }
+
+    /* Code */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      overflow-x: auto;
+      margin-bottom: 16px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    code { font-family: 'Menlo', 'Monaco', 'Consolas', monospace; font-size: 13px; }
+    p code, li code {
+      background: var(--surface2);
+      color: var(--accent3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .k { color: #ff79c6; }
+    .s { color: #f1fa8c; }
+    .c { color: #6272a4; font-style: italic; }
+    .n { color: #50fa7b; }
+    .v { color: #bd93f9; }
+    .num { color: #ffb86c; }
+    .err { color: var(--accent5); }
+    .ok  { color: var(--accent3); }
+
+    /* Callouts */
+    .callout {
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      border-left: 4px solid;
+      display: flex;
+      gap: 12px;
+    }
+    .callout.info    { background: rgba(108,143,255,0.08); border-color: var(--accent); }
+    .callout.warn    { background: rgba(245,158,11,0.08);  border-color: var(--accent4); }
+    .callout.tip     { background: rgba(52,211,153,0.08);  border-color: var(--accent3); }
+    .callout.danger  { background: rgba(248,113,113,0.08); border-color: var(--accent5); }
+    .callout-icon    { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+    .callout-body    { font-size: 13px; color: var(--muted); }
+    .callout-body strong { color: var(--text); display: block; margin-bottom: 4px; }
+
+    /* Timeline */
+    .timeline { position: relative; padding-left: 28px; margin-bottom: 24px; }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 7px; top: 8px; bottom: 8px;
+      width: 2px;
+      background: var(--border);
+    }
+    .timeline-item { position: relative; margin-bottom: 28px; }
+    .timeline-dot {
+      position: absolute;
+      left: -24px; top: 4px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      border: 2px solid;
+      background: var(--bg);
+    }
+    .timeline-dot.error  { border-color: var(--accent5); background: rgba(248,113,113,0.2); }
+    .timeline-dot.fix    { border-color: var(--accent3); background: rgba(52,211,153,0.2); }
+    .timeline-dot.info   { border-color: var(--accent);  background: rgba(108,143,255,0.2); }
+    .timeline-dot.warn   { border-color: var(--accent4); background: rgba(245,158,11,0.2); }
+    .timeline-label { font-size: 11px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 4px; }
+    .timeline-label.error { color: var(--accent5); }
+    .timeline-label.fix   { color: var(--accent3); }
+    .timeline-label.info  { color: var(--accent); }
+    .timeline-label.warn  { color: var(--accent4); }
+    .timeline-text { font-size: 13px; color: var(--muted); }
+    .timeline-text strong { color: var(--text); }
+
+    /* Steps */
+    .steps { margin-bottom: 24px; }
+    .step { display: flex; gap: 16px; margin-bottom: 20px; align-items: flex-start; }
+    .step-num {
+      width: 28px; height: 28px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+      flex-shrink: 0;
+      color: var(--accent);
+      margin-top: 2px;
+    }
+    .step-body { flex: 1; }
+    .step-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .step-desc  { font-size: 13px; color: var(--muted); }
+
+    ul.bullet { padding-left: 20px; color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+    ul.bullet li { margin-bottom: 6px; }
+    ul.bullet li strong { color: var(--text); }
+
+    .compare { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    .compare th {
+      background: var(--surface2); padding: 10px 16px;
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--muted); text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .compare td { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+    .compare tr:last-child td { border-bottom: none; }
+    .compare td:first-child { color: var(--text); font-weight: 600; }
+
+    hr { border: none; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- Sidebar -->
+  <nav>
+    <div class="brand">
+      <h2>Build Journal</h2>
+      <p>Errors, Fixes & Decisions</p>
+    </div>
+    <ul>
+      <li class="section">Setup</li>
+      <li><a href="#overview">Project Overview</a></li>
+      <li><a href="#session-timeline">Full Timeline</a></li>
+      <li class="section">Errors & Fixes</li>
+      <li><a href="#error-1">Error 1 — ng serve not found</a></li>
+      <li><a href="#error-2">Error 2 — No package-lock.json</a></li>
+      <li><a href="#error-3">Error 3 — UI lock file out of sync</a></li>
+      <li><a href="#error-4">Error 4 — Python / node-gyp missing</a></li>
+      <li><a href="#error-5">Error 5 — Registry path denied</a></li>
+      <li class="section">Decisions</li>
+      <li><a href="#decision-registry">Registry naming</a></li>
+      <li><a href="#decision-structure">Why services/ at root</a></li>
+      <li><a href="#lessons">Lessons Learned</a></li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <!-- Hero -->
+    <div class="hero">
+      <div class="tag">Build Journal</div>
+      <h1>Errors, Fixes &<br><span>What We Learned</span></h1>
+      <p>A complete log of every problem we hit while converting the Telegram Content Download project into a microservice architecture — and exactly how each one was diagnosed and fixed.</p>
+    </div>
+
+    <!-- ── Overview ── -->
+    <section class="section" id="overview">
+      <div class="section-header">
+        <div class="section-number">0</div>
+        <h2>What We Were Building</h2>
+      </div>
+
+      <p>We took a Node.js monolith — a single <code>server.js</code> file that handled auth, Telegram reading, downloading, and Google Drive — and split it into <strong>7 independent Docker containers</strong> that communicate over an internal network.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">Before</div>
+          <p>One <code>server.js</code>, one <code>modules/</code> folder, everything coupled together. <code>npm run dev</code> started the backend and Angular UI together with <code>concurrently</code>.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">After</div>
+          <p>7 services each with their own <code>Dockerfile</code>, <code>package.json</code>, and <code>server.js</code>. One <code>docker-compose.yml</code> at root starts everything with <code>docker compose up</code>.</p>
+        </div>
+      </div>
+
+      <p>The services we created:</p>
+      <ul class="bullet">
+        <li><strong>auth-service :3001</strong> — Telegram login, OTP, 2FA, session</li>
+        <li><strong>telegram-read-service :3002</strong> — Groups, messages, photos</li>
+        <li><strong>telegram-download-service :3003</strong> — Media download</li>
+        <li><strong>google-upload-service :3004</strong> — Google Drive upload</li>
+        <li><strong>google-download-service :3005</strong> — Google Drive download</li>
+        <li><strong>api-gateway :3000</strong> — Reverse proxy, routes all traffic</li>
+        <li><strong>ui-service :4200</strong> — Angular compiled → served by nginx</li>
+      </ul>
+    </section>
+
+    <!-- ── Timeline ── -->
+    <section class="section" id="session-timeline">
+      <div class="section-header">
+        <div class="section-number">1</div>
+        <h2>Full Session Timeline</h2>
+      </div>
+
+      <p>Here is every meaningful event in the order it happened — from the very first error to a successful build.</p>
+
+      <div class="timeline">
+
+        <div class="timeline-item">
+          <div class="timeline-dot info"></div>
+          <div class="timeline-label info">Start</div>
+          <div class="timeline-text"><strong>Initial problem reported</strong> — <code>npm run dev</code> was failing with <em>"Could not find the @angular/build:dev-server builder's node package"</em>. Root cause: the <code>ui</code> script in root <code>package.json</code> pointed to <code>modules/user-interface</code> but the Angular app was actually in a different location, and its <code>node_modules</code> were not installed.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Fix</div>
+          <div class="timeline-text"><strong>Ran <code>npm install</code> inside the Angular folder</strong> to install all Angular dependencies including <code>@angular/build</code>.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot info"></div>
+          <div class="timeline-label info">Decision</div>
+          <div class="timeline-text"><strong>Decided to convert to microservices</strong> — each module becomes its own Docker container. Created 7 service folders under <code>services/</code>, wrote all Dockerfiles, <code>docker-compose.yml</code>, and <code>Makefile</code>.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot info"></div>
+          <div class="timeline-label info">Decision</div>
+          <div class="timeline-text"><strong>Deleted <code>modules/</code> folder and root <code>server.js</code></strong> — no longer needed since each service is self-contained under <code>services/</code>.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot error"></div>
+          <div class="timeline-label error">Error 1</div>
+          <div class="timeline-text"><strong><code>npm ci</code> requires package-lock.json</strong> — all 6 Node services failed because we created <code>package.json</code> files manually but never ran <code>npm install</code>, so no lock files existed.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Fix</div>
+          <div class="timeline-text"><strong>Ran <code>npm install --package-lock-only</code></strong> in each service folder to generate lock files without installing <code>node_modules</code> locally.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot error"></div>
+          <div class="timeline-label error">Error 2</div>
+          <div class="timeline-text"><strong>ui-service lock file out of sync</strong> — the Angular project had an existing but stale <code>package-lock.json</code> that was missing <code>@emnapi/core</code> and <code>@emnapi/runtime</code>. <code>npm ci</code> refuses to run when lock file and <code>package.json</code> disagree.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Fix</div>
+          <div class="timeline-text"><strong>Deleted <code>node_modules</code> and <code>package-lock.json</code></strong> inside <code>services/ui-service</code> and ran a fresh <code>npm install</code> to regenerate a clean, in-sync lock file.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot error"></div>
+          <div class="timeline-label error">Error 3</div>
+          <div class="timeline-text"><strong>Python / node-gyp not found in Alpine container</strong> — the <code>telegram</code> npm package includes <code>bufferutil</code>, a native C++ addon. Compiling it requires Python, make, and g++. Alpine Linux ships with none of these.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Fix</div>
+          <div class="timeline-text"><strong>Added <code>apk add --no-cache python3 make g++</code></strong> to the builder stage of the three Dockerfiles that use the <code>telegram</code> package: <code>auth-service</code>, <code>telegram-read-service</code>, <code>telegram-download-service</code>.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot error"></div>
+          <div class="timeline-label error">Error 4</div>
+          <div class="timeline-text"><strong>Docker Hub access denied — invalid 3-level image name</strong> — we named images as <code>sauravmehta/content-scrapper/auth-service</code>. Docker Hub only supports <code>username/repository</code> (one slash). The second slash was treated as a sub-path that doesn't exist → push denied.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Fix</div>
+          <div class="timeline-text"><strong>Renamed images to use a dash instead of a second slash</strong> — <code>sauravmehta/content-scrapper-auth-service</code>. Updated both <code>Makefile</code> and <code>docker-compose.yml</code> to use the new naming.</div>
+        </div>
+
+        <div class="timeline-item">
+          <div class="timeline-dot fix"></div>
+          <div class="timeline-label fix">Done</div>
+          <div class="timeline-text"><strong>Build succeeded</strong> — all 7 images built. Ready to push with <code>make push</code> after <code>docker login</code>.</div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── Error 1 ── -->
+    <section class="section" id="error-1">
+      <div class="section-header">
+        <div class="section-number">2</div>
+        <h2>Error 1 — Could not find @angular/build</h2>
+      </div>
+
+      <div class="error-block">
+        <div class="error-header">
+          <span class="error-badge">Error</span>
+          <span class="error-title">Could not find the '@angular/build:dev-server' builder's node package</span>
+        </div>
+        <div class="error-body">
+          <pre><code><span class="err">[1] Error: Could not find the '@angular/build:dev-server' builder's node package.</span>
+<span class="err">[1] npm run ui exited with code 1</span></code></pre>
+          <p><strong>Where it happened:</strong> Running <code>npm run dev</code> from the project root.</p>
+          <p><strong>Root cause:</strong> The root <code>package.json</code> had this script:</p>
+          <pre><code>"ui": "cd modules/user-interface && ng serve"</code></pre>
+          <p>The Angular project existed at that path, but <code>npm install</code> had never been run inside it — so the <code>node_modules</code> folder was empty. Angular's build toolchain (<code>@angular/build</code>, <code>@angular/cli</code>) was listed in <code>package.json</code> but not actually installed on disk.</p>
+        </div>
+      </div>
+
+      <div class="fix-block">
+        <div class="fix-header">
+          <span class="fix-badge">Fix</span>
+          <span class="fix-title">Run npm install inside the Angular folder</span>
+        </div>
+        <div class="fix-body">
+          <pre><code>cd modules/user-interface
+npm install</code></pre>
+          <p>This installs all dependencies listed in <code>package.json</code> including <code>@angular/build</code>, <code>@angular/cli</code>, and TypeScript, creating the <code>node_modules</code> folder.</p>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>Lesson: each package.json needs its own npm install</strong>
+          In a monorepo or multi-folder project, each folder with a <code>package.json</code> is an independent Node project. Running <code>npm install</code> at the root does NOT install dependencies in sub-folders. Each sub-project needs its own install.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Error 2 ── -->
+    <section class="section" id="error-2">
+      <div class="section-header">
+        <div class="section-number">3</div>
+        <h2>Error 2 — npm ci requires package-lock.json</h2>
+      </div>
+
+      <div class="error-block">
+        <div class="error-header">
+          <span class="error-badge">Error</span>
+          <span class="error-title">npm error code EUSAGE — npm ci can only install with an existing package-lock.json</span>
+        </div>
+        <div class="error-body">
+          <pre><code><span class="err">npm error code EUSAGE</span>
+<span class="err">npm error</span>
+<span class="err">npm error The `npm ci` command can only install with an existing package-lock.json or</span>
+<span class="err">npm error npm-shrinkwrap.json with lockfileVersion >= 1. Run an install with npm@5 or</span>
+<span class="err">npm error later to generate a package-lock.json file, then try again.</span></code></pre>
+          <p><strong>Where it happened:</strong> All 6 Node service Dockerfiles during <code>docker compose build</code>.</p>
+          <p><strong>Root cause:</strong> We created all the service folders and <code>package.json</code> files by hand. But <code>package-lock.json</code> — the exact dependency snapshot file — is only generated when you actually run <code>npm install</code>. We never did, so it didn't exist. The Dockerfiles used <code>npm ci</code> which is stricter than <code>npm install</code> and <strong>requires</strong> a lock file.</p>
+        </div>
+      </div>
+
+      <div class="fix-block">
+        <div class="fix-header">
+          <span class="fix-badge">Fix</span>
+          <span class="fix-title">Generate lock files without installing node_modules locally</span>
+        </div>
+        <div class="fix-body">
+          <pre><code><span class="c"># Run this in each service folder</span>
+<span class="c"># --package-lock-only: generates the lock file without touching node_modules</span>
+cd services/auth-service && npm install --package-lock-only
+cd services/telegram-read-service && npm install --package-lock-only
+cd services/telegram-download-service && npm install --package-lock-only
+cd services/google-upload-service && npm install --package-lock-only
+cd services/google-download-service && npm install --package-lock-only
+cd services/api-gateway && npm install --package-lock-only</code></pre>
+          <p>The <code>--package-lock-only</code> flag is perfect here — it resolves all dependency versions and writes the lock file, but doesn't actually download anything into <code>node_modules</code>. Docker will do the real install inside the container.</p>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>npm install vs npm ci — what's the difference?</strong>
+          <code>npm install</code> reads <code>package.json</code>, resolves versions, and creates/updates the lock file. <code>npm ci</code> reads the lock file exactly — it won't update it or deviate from it. <code>npm ci</code> is faster and more reproducible — perfect for Docker and CI/CD pipelines. But it requires the lock file to already exist.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Error 3 ── -->
+    <section class="section" id="error-3">
+      <div class="section-header">
+        <div class="section-number">4</div>
+        <h2>Error 3 — UI lock file out of sync</h2>
+      </div>
+
+      <div class="error-block">
+        <div class="error-header">
+          <span class="error-badge">Error</span>
+          <span class="error-title">npm ci can only install when package.json and package-lock.json are in sync</span>
+        </div>
+        <div class="error-body">
+          <pre><code><span class="err">npm error `npm ci` can only install packages when your package.json and</span>
+<span class="err">package-lock.json or npm-shrinkwrap.json are in sync.</span>
+<span class="err">Please update your lock file with `npm install` before continuing.</span>
+<span class="err"></span>
+<span class="err">Missing: @emnapi/core@1.11.3 from lock file</span>
+<span class="err">Missing: @emnapi/runtime@1.11.3 from lock file</span></code></pre>
+          <p><strong>Where it happened:</strong> Only in <code>ui-service</code> Dockerfile during <code>docker compose build</code>.</p>
+          <p><strong>Root cause:</strong> The Angular project had an old <code>package-lock.json</code> that was generated with an older version of npm or different packages. When Angular was updated (or when packages were added), new transitive dependencies appeared — <code>@emnapi/core</code> and <code>@emnapi/runtime</code> — but the lock file was never regenerated to include them. So <code>package.json</code> and <code>package-lock.json</code> described different dependency trees.</p>
+        </div>
+      </div>
+
+      <div class="fix-block">
+        <div class="fix-header">
+          <span class="fix-badge">Fix</span>
+          <span class="fix-title">Delete stale lock file and regenerate with a fresh npm install</span>
+        </div>
+        <div class="fix-body">
+          <pre><code>cd services/ui-service
+
+<span class="c"># Delete the stale lock file and node_modules</span>
+rm -rf node_modules package-lock.json
+
+<span class="c"># Fresh install — regenerates a clean, in-sync lock file</span>
+npm install</code></pre>
+          <p>After this, the new <code>package-lock.json</code> includes <code>@emnapi/core</code> and all other transitive dependencies, so <code>npm ci</code> inside Docker finds everything it expects.</p>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <div class="callout-icon">⚠️</div>
+        <div class="callout-body">
+          <strong>Why does this happen?</strong>
+          Lock files can go stale when: (1) someone updates <code>package.json</code> but forgets to commit the updated lock file, (2) different npm versions generate different lock file formats, or (3) a package you depend on adds new sub-dependencies. Always commit your lock file and regenerate it when you see sync errors.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Error 4 ── -->
+    <section class="section" id="error-4">
+      <div class="section-header">
+        <div class="section-number">5</div>
+        <h2>Error 4 — Python / node-gyp not found in Alpine</h2>
+      </div>
+
+      <div class="error-block">
+        <div class="error-header">
+          <span class="error-badge">Error</span>
+          <span class="error-title">gyp ERR! find Python — You need to install the latest version of Python</span>
+        </div>
+        <div class="error-body">
+          <pre><code><span class="err">npm error code 1</span>
+<span class="err">npm error path /app/node_modules/bufferutil</span>
+<span class="err">npm error command failed</span>
+<span class="err">npm error command sh -c node-gyp-build</span>
+<span class="err">npm error gyp ERR! find Python Python is not set from command line or npm configuration</span>
+<span class="err">npm error gyp ERR! find Python - executable path is ""</span>
+<span class="err">npm error gyp ERR! find Python checking if "python3" can be used</span>
+<span class="err">npm error gyp ERR! find Python - "" could not be run</span>
+<span class="err">npm error gyp ERR! find Python **********************************************************</span>
+<span class="err">npm error gyp ERR! find Python You need to install the latest version of Python.</span>
+<span class="err">npm error gyp ERR! stack Error: Could not find any Python installation to use</span>
+<span class="err">npm error gyp ERR! System Linux 6.12.54-linuxkit</span>
+<span class="err">npm error gyp ERR! node -v v20.20.2</span></code></pre>
+          <p><strong>Where it happened:</strong> <code>auth-service</code>, <code>telegram-read-service</code>, <code>telegram-download-service</code> — all services that depend on the <code>telegram</code> npm package.</p>
+          <p><strong>Root cause:</strong> This is a chain of dependencies:</p>
+          <ul class="bullet" style="margin-top:8px">
+            <li>Our code depends on the <code>telegram</code> npm package (GramJS)</li>
+            <li><code>telegram</code> depends on <code>ws</code> (WebSocket library)</li>
+            <li><code>ws</code> optionally depends on <code>bufferutil</code> for performance</li>
+            <li><code>bufferutil</code> is a <strong>native C++ addon</strong> — it must be compiled from source on the target machine during <code>npm install</code></li>
+            <li>Compiling C++ requires: <strong>Python</strong> (for node-gyp build scripts), <strong>make</strong> (build orchestrator), <strong>g++</strong> (C++ compiler)</li>
+            <li><strong>Alpine Linux has none of these by default</strong> — it's intentionally minimal</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="fix-block">
+        <div class="fix-header">
+          <span class="fix-badge">Fix</span>
+          <span class="fix-title">Install build tools in the builder stage of affected Dockerfiles</span>
+        </div>
+        <div class="fix-body">
+          <pre><code><span class="c"># Before (broken):</span>
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+<span class="c"># After (fixed):</span>
+COPY package*.json ./
+<span class="c"># apk = Alpine's package manager (like apt on Ubuntu, brew on Mac)</span>
+<span class="c"># --no-cache = don't cache the package index — keeps image smaller</span>
+<span class="c"># python3 = required by node-gyp</span>
+<span class="c"># make = build orchestrator required by node-gyp</span>
+<span class="c"># g++ = C++ compiler required to compile bufferutil</span>
+RUN apk add --no-cache python3 make g++ && npm ci --omit=dev</code></pre>
+          <p>This was added to: <code>auth-service/Dockerfile</code>, <code>telegram-read-service/Dockerfile</code>, <code>telegram-download-service/Dockerfile</code>.</p>
+          <p>Importantly, this only runs in <strong>Stage 1 (builder)</strong>. The runtime Stage 2 copies only the compiled <code>node_modules</code> — it never sees Python, make, or g++. The final image stays small and clean.</p>
+        </div>
+      </div>
+
+      <div class="callout tip">
+        <div class="callout-icon">🔍</div>
+        <div class="callout-body">
+          <strong>How to spot native addons in your dependencies</strong>
+          Look for <code>binding.gyp</code> files in a package's source, or packages that list <code>node-gyp</code> as a dependency. Common native packages: <code>bufferutil</code>, <code>utf-8-validate</code>, <code>bcrypt</code>, <code>sharp</code>, <code>canvas</code>, <code>sqlite3</code>. Any of these inside an Alpine-based Docker image will need the build tools.
+        </div>
+      </div>
+
+      <h3>What is node-gyp?</h3>
+      <p><strong>node-gyp</strong> is Node.js's build tool for native addons. When you <code>npm install</code> a package with a <code>binding.gyp</code> file, npm automatically runs <code>node-gyp rebuild</code> which:</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Calls Python to configure the build</div>
+            <div class="step-desc">node-gyp's configuration scripts are written in Python. This is why Python is required even though the addon is C++.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Runs make to compile the C++ source</div>
+            <div class="step-desc">The C++ source files in the package get compiled into a <code>.node</code> binary file specific to your OS and CPU architecture.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">The .node file is loaded at runtime</div>
+            <div class="step-desc">Node.js can <code>require()</code> native <code>.node</code> files just like JavaScript modules. This gives near-native C++ performance for things like WebSocket buffer handling.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Error 5 ── -->
+    <section class="section" id="error-5">
+      <div class="section-header">
+        <div class="section-number">6</div>
+        <h2>Error 5 — Docker Hub access denied (invalid image name)</h2>
+      </div>
+
+      <div class="error-block">
+        <div class="error-header">
+          <span class="error-badge">Error</span>
+          <span class="error-title">denied: requested access to the resource is denied</span>
+        </div>
+        <div class="error-body">
+          <pre><code><span class="err">denied: requested access to the resource is denied</span>
+<span class="err">The push refers to repository [docker.io/sauravmehta/content-scrapper/ui-service]</span>
+<span class="err">tag does not exist: sauravmehta/content-scrapper/ui-service:94fc73a</span>
+<span class="err">make: *** [push] Error 1</span></code></pre>
+          <p><strong>Where it happened:</strong> Running <code>make push</code> after the build.</p>
+          <p><strong>Two separate problems in this one error:</strong></p>
+          <ul class="bullet" style="margin-top: 8px;">
+            <li><strong>Tag does not exist</strong> — some images were never fully built (earlier build errors stopped them). You can't push an image that doesn't exist locally.</li>
+            <li><strong>Access denied</strong> — Docker Hub only supports <code>username/repository</code> format. We were using <code>sauravmehta/content-scrapper/ui-service</code> which has two slashes. Docker Hub treats everything after the first slash as the repository name, so it tried to push to a repository literally named <code>content-scrapper/ui-service</code> — which doesn't exist and can't be created.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="fix-block">
+        <div class="fix-header">
+          <span class="fix-badge">Fix</span>
+          <span class="fix-title">Rename images to use dash instead of second slash</span>
+        </div>
+        <div class="fix-body">
+          <pre><code><span class="c"># WRONG — Docker Hub doesn't support 3 levels</span>
+<span class="err">sauravmehta/content-scrapper/auth-service:latest</span>
+
+<span class="c"># CORRECT — username/repository (max 2 levels on Docker Hub)</span>
+<span class="ok">sauravmehta/content-scrapper-auth-service:latest</span></code></pre>
+
+          <p>Updated <code>Makefile</code>:</p>
+          <pre><code><span class="c"># Before</span>
+REGISTRY  ?= sauravmehta/content-scrapper
+
+<span class="c"># After — split into two variables</span>
+REGISTRY  ?= sauravmehta
+PREFIX    ?= content-scrapper
+
+<span class="c"># Image tag becomes: $(REGISTRY)/$(PREFIX)-$$svc:latest</span>
+<span class="c"># Result: sauravmehta/content-scrapper-auth-service:latest</span></code></pre>
+
+          <p>Updated <code>docker-compose.yml</code>:</p>
+          <pre><code><span class="c"># Before</span>
+image: ${REGISTRY:-sauravmehta/content-scrapper}/auth-service:latest
+
+<span class="c"># After — hardcoded since naming is now fixed</span>
+image: sauravmehta/content-scrapper-auth-service:latest</code></pre>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <div class="callout-icon">💡</div>
+        <div class="callout-body">
+          <strong>Docker Hub vs private registries — naming rules</strong>
+          Docker Hub enforces a flat <code>username/repository</code> namespace. If you ever move to a private registry (AWS ECR, Google Artifact Registry, self-hosted Harbor), they support deeper paths like <code>registry.company.com/project/team/service:tag</code>. For Docker Hub, always use dashes to group related images.
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Registry Decision ── -->
+    <section class="section" id="decision-registry">
+      <div class="section-header">
+        <div class="section-number">7</div>
+        <h2>Decision — Registry Naming Strategy</h2>
+      </div>
+
+      <p>We went through a few naming iterations. Here's the full history and why we landed where we did.</p>
+
+      <table class="compare">
+        <thead>
+          <tr><th>Attempt</th><th>Image Name</th><th>Result</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1st try</td>
+            <td><code style="color:var(--accent5)">placeholder/auth-service:latest</code></td>
+            <td>Placeholder — never pushed, just for local testing</td>
+          </tr>
+          <tr>
+            <td>2nd try</td>
+            <td><code style="color:var(--accent5)">sauravmehta/content-scrapper/auth-service:latest</code></td>
+            <td>Failed — Docker Hub denies 3-level paths</td>
+          </tr>
+          <tr>
+            <td>Final</td>
+            <td><code style="color:var(--accent3)">sauravmehta/content-scrapper-auth-service:latest</code></td>
+            <td>Works — valid Docker Hub format</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p>The final 7 image names on Docker Hub:</p>
+      <pre><code><span class="ok">sauravmehta/content-scrapper-auth-service:latest</span>
+<span class="ok">sauravmehta/content-scrapper-telegram-read-service:latest</span>
+<span class="ok">sauravmehta/content-scrapper-telegram-download-service:latest</span>
+<span class="ok">sauravmehta/content-scrapper-google-upload-service:latest</span>
+<span class="ok">sauravmehta/content-scrapper-google-download-service:latest</span>
+<span class="ok">sauravmehta/content-scrapper-api-gateway:latest</span>
+<span class="ok">sauravmehta/content-scrapper-ui-service:latest</span></code></pre>
+    </section>
+
+    <!-- ── Structure Decision ── -->
+    <section class="section" id="decision-structure">
+      <div class="section-header">
+        <div class="section-number">8</div>
+        <h2>Decision — Why services/ lives at the root</h2>
+      </div>
+
+      <p>A common question: why is <code>docker-compose.yml</code> and <code>services/</code> at the project root instead of inside each service folder?</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-title">Each service owns its Dockerfile</div>
+          <p>A Dockerfile describes how to build ONE service. It lives inside that service's folder because it only knows about that service.</p>
+        </div>
+        <div class="card">
+          <div class="card-title">docker-compose.yml is the org chart</div>
+          <p>It knows about ALL services — their ports, networks, dependencies, environment. It belongs at the project level, not inside any single service.</p>
+        </div>
+      </div>
+
+      <pre><code>telegram-content-download/      <span class="c">← project root</span>
+├── services/
+│   ├── auth-service/
+│   │   ├── Dockerfile          <span class="c">← knows only about auth-service</span>
+│   │   ├── server.js
+│   │   └── package.json
+│   ├── telegram-read-service/
+│   │   └── Dockerfile          <span class="c">← knows only about telegram-read-service</span>
+│   └── ...
+│
+├── docker-compose.yml          <span class="c">← knows about ALL 7 services</span>
+└── Makefile                    <span class="c">← project-level build commands</span></code></pre>
+
+      <p>This means from the project root you can always run:</p>
+      <pre><code>docker compose up     <span class="c"># works from root — no cd needed</span>
+make build            <span class="c"># works from root</span>
+make push             <span class="c"># works from root</span></code></pre>
+    </section>
+
+    <!-- ── Lessons ── -->
+    <section class="section" id="lessons">
+      <div class="section-header">
+        <div class="section-number">9</div>
+        <h2>Lessons Learned</h2>
+      </div>
+
+      <div class="card">
+        <div class="card-title">1. Always commit package-lock.json</div>
+        <p>The lock file pins exact dependency versions. Without it, two different machines (or a Docker build) may install different versions and behave differently. Create it with <code>npm install</code> and commit it alongside <code>package.json</code>.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">2. Alpine needs build tools for native Node addons</div>
+        <p>Any npm package with C++ native code (bufferutil, bcrypt, sharp, canvas, sqlite3) requires Python + make + g++ to compile. Add <code>apk add --no-cache python3 make g++</code> in the builder stage only — not the runtime stage.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">3. Docker Hub only allows username/repository (two levels)</div>
+        <p>You cannot do <code>user/group/repo</code> on Docker Hub. Use dashes to group related images: <code>user/project-service-name</code>. Private registries (ECR, GCR, Harbor) support deeper paths.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">4. npm ci vs npm install — use the right one</div>
+        <p>Use <code>npm ci</code> in Docker and CI/CD — it's faster, reproducible, and will fail loudly if lock file is out of sync (which is a feature, not a bug). Use <code>npm install</code> locally when you want to add or update packages.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">5. docker compose build --no-cache when files change on disk</div>
+        <p>Docker caches layers aggressively. If you update a file on disk (like a lock file) but Docker has a cached layer that used the old version, it won't pick up the change. Use <code>--no-cache</code> to force a full rebuild when you know something changed under the hood.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">6. Multi-stage builds keep the final image clean</div>
+        <p>Build tools (Python, make, g++, node-gyp) are needed to compile — not to run. By installing them only in Stage 1 (builder) and copying just the compiled output to Stage 2 (runtime), the final image has no build tools, no npm, and no unnecessary packages — smaller, faster, and more secure.</p>
+      </div>
+
+      <hr>
+      <p style="text-align:center; color: var(--muted); font-size: 13px; padding-top: 16px;">
+        Telegram Content Download Project · Build Journal · Saurav Mehta
+      </p>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

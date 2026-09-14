@@ -1,0 +1,97 @@
+<div class="page">
+
+  <!-- ── Hero ── -->
+  <section class="hero">
+    <h1 class="hero-title">Telegram<span class="hero-accent"> Downloader</span></h1>
+    <p class="hero-sub">Browse your groups &amp; channels and download content</p>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input
+        class="search-input"
+        type="search"
+        placeholder="Search groups and channels…"
+        [value]="searchQuery()"
+        (input)="searchQuery.set($any($event.target).value)"
+        autocomplete="off"
+      />
+      @if (searchQuery()) {
+        <button class="search-clear" (click)="searchQuery.set('')">✕</button>
+      }
+    </div>
+
+    @if (!loadingGroups() && totalGroups() > 0) {
+      <div class="hero-stats">
+        <span class="hs-item"><strong>{{ totalGroups() }}</strong> total</span>
+        <span class="hs-dot">·</span>
+        <span class="hs-item"><strong>{{ groupCount() }}</strong> groups</span>
+        <span class="hs-dot">·</span>
+        <span class="hs-item"><strong>{{ channelCount() }}</strong> channels</span>
+      </div>
+    }
+  </section>
+
+  <!-- ── Groups list ── -->
+  <main class="results">
+    @if (loadingGroups()) {
+      <div class="loading-state">
+        <span class="loader-ring"></span>
+        <span>Loading your groups…</span>
+      </div>
+    } @else if (filteredGroups().length === 0 && searchQuery()) {
+      <p class="empty-state">No groups match "<strong>{{ searchQuery() }}</strong>"</p>
+    } @else if (groups().length === 0) {
+      <p class="empty-state">No groups found.</p>
+    } @else {
+      @if (searchQuery()) {
+        <p class="result-count">{{ filteredGroups().length }} result{{ filteredGroups().length !== 1 ? 's' : '' }}</p>
+      }
+      <div class="group-list">
+        @for (group of filteredGroups(); track group.id) {
+          <div class="group-card" (click)="goToGroup(group.id)">
+
+            <img class="group-avatar"
+                 [src]="'/api/groups/' + group.id + '/photo'"
+                 [alt]="group.name"
+                 loading="lazy"
+                 (error)="$any($event.target).style.display='none'" />
+
+            <div class="group-body">
+              <div class="group-name-row">
+                <span class="group-name">{{ group.name }}</span>
+                @if (group.verified)  { <span class="badge verified">✓</span> }
+                @if (group.scam)      { <span class="badge danger">SCAM</span> }
+                @if (group.fake)      { <span class="badge danger">FAKE</span> }
+                @if (group.restricted){ <span class="badge warn">RESTRICTED</span> }
+                <span class="badge type" [class.channel]="group.type === 'channel'">{{ group.type }}</span>
+                @if (group.forum)     { <span class="badge forum">Forum</span> }
+              </div>
+
+              @if (group.username) {
+                <span class="group-username">&#64;{{ group.username }}</span>
+              }
+
+              <div class="group-meta">
+                @if (group.memberCount !== null) {
+                  <span class="meta-chip">👥 {{ group.memberCount | number }}</span>
+                }
+                @if (group.megagroup) {
+                  <span class="meta-chip">Supergroup</span>
+                }
+                @if (group.createdAt) {
+                  <span class="meta-chip">📅 {{ group.createdAt | date:'mediumDate' }}</span>
+                }
+              </div>
+            </div>
+
+            <div class="dl-count" [class.has-downloads]="(downloadCounts()[group.id] || 0) > 0">
+              <span class="dl-number">{{ downloadCounts()[group.id] || 0 }}</span>
+              <span class="dl-label">downloaded</span>
+            </div>
+
+          </div>
+        }
+      </div>
+    }
+  </main>
+
+</div>

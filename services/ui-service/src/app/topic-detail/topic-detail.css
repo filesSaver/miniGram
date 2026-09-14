@@ -1,0 +1,12 @@
+@import '../group-detail/group-detail.css';
+
+.group-sub {
+  font-size: 0.8rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.content-pad { padding: 1rem 2rem 0; }

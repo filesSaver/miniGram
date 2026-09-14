@@ -1,0 +1,251 @@
+/* ── Auth screens ── */
+.fullpage-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.auth-card {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+}
+
+.auth-card h1 {
+  font-size: 1.5rem;
+  color: #1a1a2e;
+  margin-bottom: 0.25rem;
+}
+
+/* ── Download / Groups layout ── */
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  background: white;
+  border-bottom: 1px solid #dde0e7;
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+
+.topbar h1 {
+  font-size: 1.2rem;
+  color: #1a1a2e;
+  white-space: nowrap;
+}
+
+.search-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.content {
+  padding: 1.5rem 2rem;
+  flex: 1;
+}
+
+.section-title {
+  font-size: 1rem;
+  color: #374151;
+  margin-bottom: 1rem;
+  margin-top: 0.5rem;
+}
+
+/* ── Group grid ── */
+.group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.group-row {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  background: white;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.05);
+  transition: box-shadow 0.15s, transform 0.15s;
+  cursor: pointer;
+}
+
+.group-row:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transform: translateX(3px);
+}
+
+.group-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #e5e7eb;
+  flex-shrink: 0;
+}
+
+.group-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+}
+
+.group-name {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.group-meta {
+  font-size: 0.75rem;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+
+.tag.scam, .tag.fake {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.tag.restricted {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.group-badge {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.group-badge.channel {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.page-info {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* ── Shared ── */
+.subtitle {
+  color: #6b7280;
+  font-size: 0.9rem;
+  margin-bottom: 1.5rem;
+}
+
+.input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+input {
+  flex: 1;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus {
+  border-color: #2563eb;
+}
+
+button {
+  padding: 0.6rem 1.2rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+button:disabled {
+  background: #93c5fd;
+  cursor: not-allowed;
+}
+
+button.link {
+  background: none;
+  color: #2563eb;
+  border: none;
+  padding: 0;
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.success {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: #16a34a;
+}
+
+.error {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+  color: #dc2626;
+}
+
+.checking {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
