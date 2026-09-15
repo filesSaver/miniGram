@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ── Shared network ─────────────────────────────────────────────────────────────
 # All services join this network. Inside it, services refer to each other
 # by their service name (e.g. http://auth-service:3001).
