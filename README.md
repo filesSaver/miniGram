@@ -1,14 +1,12 @@
-# Telegram Content Downloader (In-progress)
+# Telegram Content Downloader
 
-A full-stack web application for browsing Telegram groups/channels and viewing their shared content through a clean Angular interface.
+A full-stack web application for browsing Telegram groups/channels and downloading their shared content — built as a **microservices architecture** with Docker.
 
-The application uses **Angular** for the frontend and **Node.js + Express** with **GramJS** for communicating with Telegram through the MTProto protocol.
-
-> ⚠️ **Project Status:** Authentication and content browsing are implemented. File downloading and API security are still under development.
+> **Project Status:** Authentication, content browsing, and Telegram media downloading are implemented. Google Drive integration and API security are still under development.
 
 ---
 
-## 📸 Screenshots
+## Screenshots
 
 <p align="center">
   <img src="resources/image.png" width="32%" />
@@ -18,663 +16,336 @@ The application uses **Angular** for the frontend and **Node.js + Express** with
 
 ---
 
-## ✨ Features
+## Features
 
-### 🔐 Telegram Authentication
+### Telegram Authentication
 
 * Phone number based login
 * OTP verification
-* Telegram 2FA/password support
-* Persistent Telegram session
-* Automatically detects existing login sessions
+* Telegram 2FA / password support
+* Persistent session (no re-login after restart)
+* Automatic detection of existing sessions
 
-### 📂 Telegram Groups & Channels
+### Telegram Groups & Channels
 
-* Fetches the user's Telegram groups and channels
+* Fetches the user's groups and channels
 * Displays group/channel profile photos
 * Pagination support
-* Navigate from a group list to its detailed content
+* Navigate from list to detailed content view
 
-### 📄 Content Browsing
+### Content Browsing
 
-View content shared inside a Telegram group/channel.
+View content shared inside a group/channel, filtered by type:
 
-Supported content categories:
+* Videos
+* Images
+* PDFs
+* Chat / Messages
+* Other files
+* All content
 
-* 🎥 Videos
-* 🖼️ Images
-* 📄 PDFs
-* 💬 Chat / Messages
-* 📦 Other files
-* 📋 All content
+### Content Selection & Download
 
-### ☑️ Content Selection
-
-* Select individual content items
-* Bulk selection support
+* Select individual items or bulk-select
 * Load more content without replacing existing results
+* Download selected Telegram media files to a local directory
 
-### 🔗 Telegram URL Input
+### Telegram URL Input
 
-The home page includes a URL input for Telegram `t.me/...` links.
-
-> The actual download functionality is currently a **TODO**.
+The home page includes a URL input for `t.me/...` links.
 
 ---
 
-# 🏗️ Project Architecture
+## Architecture
 
-At a high level, the application consists of three main layers:
+The project is split into **7 independent Docker services** that communicate over an internal network. The browser only ever talks to the UI and API Gateway — all backend services are isolated.
 
-```text
-┌──────────────────────────────┐
-│       User's Browser         │
-│        Angular UI            │
-│          :4200               │
-└──────────────┬───────────────┘
-               │
-               │ HTTP
-               │ /api/*
-               ▼
-┌──────────────────────────────┐
-│       Node.js Backend        │
-│      Express Server          │
-│          :3000               │
-└──────────────┬───────────────┘
-               │
-               │ MTProto
-               ▼
-┌──────────────────────────────┐
-│      Telegram Servers        │
-└──────────────────────────────┘
 ```
+┌─────────────────────────────────┐
+│       Browser / Angular UI      │
+│          localhost:4200          │
+└──────────────┬──────────────────┘
+               │ HTTP /api/*
+               ▼
+┌─────────────────────────────────┐
+│           API Gateway           │
+│          localhost:3000          │
+└──┬──────┬──────┬──────┬─────────┘
+   │      │      │      │
+   ▼      ▼      ▼      ▼
+auth  tg-read  tg-dl  g-upload/download
+:3001  :3002   :3003   :3004 / :3005
+```
+
+### Services
+
+| Service | Port | Responsibility |
+| --- | --- | --- |
+| `auth-service` | 3001 | Telegram login, OTP, 2FA, session |
+| `telegram-read-service` | 3002 | Groups, messages, profile photos |
+| `telegram-download-service` | 3003 | Media file downloads |
+| `google-upload-service` | 3004 | Upload files to Google Drive |
+| `google-download-service` | 3005 | Download files from Google Drive |
+| `api-gateway` | 3000 | Route external traffic; no business logic |
+| `ui-service` | 4200 | Angular app compiled to static files, served by nginx |
 
 ### Request Flow
 
-```text
-Angular Component
-       │
-       ▼
-Angular Auth Service
-       │
-       ▼
-HTTP Request
-       │
-       ▼
-Express Route
-       │
-       ▼
-Telegram Auth Service
-       │
-       ▼
-GramJS / MTProto
-       │
-       ▼
-Telegram
 ```
-
----
-
-# 📁 Project Structure
-
-```text
-telegram-content-download/
-│
-├── server.js
-├── .env
-│
-├── services/
-│   └── user-authorization/
-│       └── auth.service.js
-│
-├── ui/
-│   ├── proxy.conf.json
-│   │
-│   └── src/
-│       └── app/
-│           ├── app.ts
-│           ├── app.html
-│           ├── app.routes.ts
-│           │
-│           ├── services/
-│           │   └── auth.service.ts
-│           │
-│           ├── home/
-│           │   ├── home.ts
-│           │   └── home.html
-│           │
-│           └── group-detail/
-│               ├── group-detail.ts
-│               └── group-detail.html
-│
-└── resources/
-    ├── image.png
-    ├── image-1.png
-    └── image-2.png
-```
-
----
-
-# ⚙️ Backend
-
-The backend is built with **Node.js**, **Express**, and **GramJS**.
-
-## `server.js`
-
-Acts as the application's **HTTP server and API layer**.
-
-Responsibilities:
-
-* Starts the Express server on port `3000`
-* Provides REST API endpoints
-* Receives requests from Angular
-* Calls the Telegram service
-* Returns Telegram data to the frontend
-
-### API Endpoints
-
-| Method | Endpoint              | Description                                  |
-| ------ | --------------------- | -------------------------------------------- |
-| `GET`  | `/auth/status`        | Check whether the Telegram session is active |
-| `POST` | `/auth/send-code`     | Send Telegram OTP                            |
-| `POST` | `/auth/sign-in`       | Verify OTP and sign in                       |
-| `POST` | `/auth/2fa`           | Submit Telegram 2FA password                 |
-| `GET`  | `/groups`             | Get Telegram groups/channels                 |
-| `GET`  | `/groups/:id/photo`   | Get group/channel profile photo              |
-| `GET`  | `/groups/:id/content` | Get content from a group/channel             |
-| `POST` | `/download`           | Download endpoint — **TODO**                 |
-
----
-
-## `auth.service.js`
-
-Location:
-
-```text
-services/user-authorization/auth.service.js
-```
-
-This is the **Telegram communication layer** of the application.
-
-It uses **GramJS** to communicate directly with Telegram using the MTProto protocol.
-
-### Main responsibilities
-
-* Creates and manages a Telegram client
-* Handles Telegram authentication
-* Maintains the Telegram session
-* Retrieves groups/channels
-* Retrieves group/channel profile photos
-* Retrieves messages and files
-* Categorizes content
-
-### Telegram Login Flow
-
-```text
-Phone Number
-     │
-     ▼
-sendCode()
-     │
-     ▼
-Telegram sends OTP
-     │
-     ▼
-signIn()
-     │
-     ├── Login successful
-     │
-     └── 2FA required
-              │
-              ▼
-        signInWith2FA()
-              │
-              ▼
-        Login successful
-```
-
-The authenticated session is stored as a session string so that the user does not have to log in again every time the backend restarts.
-
----
-
-# 🔑 Environment Variables
-
-The backend requires Telegram API credentials.
-
-Example `.env`:
-
-```env
-API_ID=your_api_id
-API_HASH=your_api_hash
-SESSION_STRING=your_session_string
-```
-
-### Variables
-
-| Variable         | Purpose                           |
-| ---------------- | --------------------------------- |
-| `API_ID`         | Telegram application ID           |
-| `API_HASH`       | Telegram application hash         |
-| `SESSION_STRING` | Persistent Telegram login session |
-
-> 🔒 **Never commit your ****`.env`**** file or Telegram credentials to Git.**
-
-Add it to `.gitignore`:
-
-```gitignore
-.env
-node_modules/
-```
-
----
-
-# 🖥️ Frontend
-
-The frontend is built using **Angular**.
-
-## `proxy.conf.json`
-
-During development:
-
-```text
-Angular
-localhost:4200
-     │
-     │ /api/*
-     ▼
-Node.js
-localhost:3000
-```
-
-The Angular development server forwards `/api/...` requests to the Node.js backend.
-
-For example:
-
-```text
-Angular calls:
-
-/api/groups
-
-        ↓
-
-Proxy forwards to:
-
-http://localhost:3000/groups
-```
-
-This allows the frontend to communicate with the backend without directly hardcoding the backend URL in every component.
-
----
-
-# 🧩 Angular Application
-
-## `app.ts` / `app.html`
-
-The root component and authentication gate.
-
-When the application starts:
-
-```text
-Application starts
-       │
-       ▼
-Check /api/auth/status
-       │
-       ├── Logged in
-       │      │
-       │      ▼
-       │   Home Page
-       │
-       └── Not logged in
-              │
-              ▼
-          Login Screen
-```
-
-The login screen guides the user through:
-
-1. Phone number
-2. OTP
-3. Optional 2FA password
-
-The application then navigates to the home page after successful authentication.
-
----
-
-## `app.routes.ts`
-
-Defines application routes.
-
-| Route             | Component              | Purpose                    |
-| ----------------- | ---------------------- | -------------------------- |
-| `/`               | `HomeComponent`        | Groups/channels home page  |
-| `/group/:groupId` | `GroupDetailComponent` | View group/channel content |
-
----
-
-## `services/auth.service.ts`
-
-A shared Angular service responsible for communicating with the backend.
-
-It:
-
-* Wraps Angular `HttpClient`
-* Handles authentication API calls
-* Retrieves groups
-* Retrieves group content
-* Retrieves profile photos
-* Defines `Group` and `ContentItem` TypeScript interfaces
-
-Components use this service instead of making API calls directly.
-
-```text
-Component
-    │
-    ▼
-AuthService
-    │
-    ▼
-Backend API
-```
-
-This keeps API-related code in one place.
-
----
-
-# 🏠 Home Page
-
-Files:
-
-```text
-ui/src/app/home/
-├── home.ts
-└── home.html
-```
-
-The home page:
-
-* Displays Telegram groups/channels
-* Loads group profile photos
-* Supports pagination
-* Displays 10 groups per page
-* Provides previous/next navigation
-* Provides a Telegram URL input
-* Navigates to a group's detail page
-
-```text
-Home
- │
- ├── Groups
- │    ├── Group A
- │    ├── Group B
- │    ├── Group C
- │    └── ...
- │
- └── Telegram URL
-```
-
----
-
-# 📦 Group Detail Page
-
-Files:
-
-```text
-ui/src/app/group-detail/
-├── group-detail.ts
-└── group-detail.html
-```
-
-The group detail page displays content from a selected Telegram group/channel.
-
-### Content Tabs
-
-```text
-┌─────┬────────┬────────┬──────┬──────┬───────┐
-│ All │ Videos │ Images │ PDFs │ Chat │ Other │
-└─────┴────────┴────────┴──────┴──────┴───────┘
-```
-
-Features:
-
-* Filter content by type
-* Select individual items
-* Bulk selection
-* Load more content
-* Append new content instead of replacing existing items
-
----
-
-# 🔄 End-to-End Flow
-
-## 1. Application Startup
-
-```text
 Browser
    │
    ▼
-Angular App
+Angular UI (nginx :80 → :4200)
    │
    ▼
-/api/auth/status
+API Gateway (:3000)
    │
-   ▼
-Backend
-   │
-   ▼
-Telegram Session
-```
-
-The application determines whether the user already has an active Telegram session.
-
----
-
-## 2. Login
-
-```text
-Phone Number
-     │
-     ▼
-POST /auth/send-code
-     │
-     ▼
-Telegram OTP
-     │
-     ▼
-POST /auth/sign-in
-     │
-     ├── Success ──────────────┐
-     │                         │
-     └── 2FA Required          │
-            │                  │
-            ▼                  │
-       POST /auth/2fa          │
-            │                  │
-            └──────────────────┘
-                       │
-                       ▼
-                  Home Page
+   ├── /auth/*    → auth-service :3001
+   ├── /groups/*  → telegram-read-service :3002
+   ├── /download  → telegram-download-service :3003
+   ├── /google/upload   → google-upload-service :3004
+   └── /google/download → google-download-service :3005
 ```
 
 ---
 
-## 3. Load Groups
+## Project Structure
 
-```text
-HomeComponent
-      │
-      ▼
-GET /groups
-      │
-      ▼
-auth.service.js
-      │
-      ▼
-GramJS
-      │
-      ▼
-Telegram
-      │
-      ▼
-Groups / Channels
-      │
-      ▼
-Angular UI
+```
+telegram-content-download/
+│
+├── docker-compose.yml          ← starts all 7 services
+├── Makefile                    ← build / push / save shortcuts
+├── .env.example                ← copy to .env and fill in credentials
+├── package.json                ← root dev scripts (npm run dev, etc.)
+│
+├── services/
+│   ├── auth-service/
+│   │   ├── Dockerfile
+│   │   ├── server.js
+│   │   └── package.json
+│   ├── telegram-read-service/
+│   ├── telegram-download-service/
+│   ├── google-upload-service/
+│   ├── google-download-service/
+│   ├── api-gateway/
+│   └── ui-service/             ← Angular app + nginx config
+│
+├── downloads/
+│   └── Custom/                 ← default local download folder
+│
+├── resources/                  ← README screenshots
+└── dev-journals/               ← build journal & technical deep-dives
 ```
 
 ---
 
-## 4. View Group Content
+## Getting Started
 
-```text
-User selects group
-        │
-        ▼
-/group/:groupId
-        │
-        ▼
-GET /groups/:id/content
-        │
-        ▼
-GramJS
-        │
-        ▼
-Telegram
-        │
-        ▼
-Messages + Files
-        │
-        ▼
-Content categorization
-        │
-        ▼
-Angular UI
+### Prerequisites
+
+* Docker Desktop (with Compose v2+)
+* Telegram API credentials from [my.telegram.org](https://my.telegram.org)
+
+### 1. Create your `.env` file
+
+```bash
+cp .env.example .env
+# Fill in API_ID and API_HASH
 ```
 
----
+### 2. Start all services
 
-# 🛠️ Tech Stack
+```bash
+npm run dev
+# or: make up
+```
 
-### Frontend
+Docker builds all 7 images and starts the full stack. First run takes 3–5 minutes; subsequent runs use the layer cache and are much faster.
 
-* Angular
-* TypeScript
-* HTML / CSS
-* Angular Router
-* Angular HttpClient
+### 3. Open the app
 
-### Backend
-
-* Node.js
-* Express
-* JavaScript
-
-### Telegram
-
-* GramJS
-* Telegram MTProto API
-
-### Development
-
-* Angular development server
-* Express server
-* Angular proxy
+Navigate to [http://localhost:4200](http://localhost:4200) — log in with your Telegram phone number and follow the on-screen steps.
 
 ---
 
-# 🚧 Current Status
+## npm Scripts
 
-| Feature                     | Status |
-| --------------------------- | :----: |
-| Telegram authentication     |    ✅   |
-| OTP login                   |    ✅   |
-| Telegram 2FA                |    ✅   |
-| Persistent session          |    ✅   |
-| Group/channel listing       |    ✅   |
-| Group profile photos        |    ✅   |
-| Group content retrieval     |    ✅   |
-| Content categorization      |    ✅   |
-| Content filtering           |    ✅   |
-| Pagination                  |    ✅   |
-| Load more                   |    ✅   |
-| Content selection           |    ✅   |
-| Telegram URL input          |   🟡   |
-| File downloading            |    ❌   |
-| Bulk download               |    ❌   |
-| API authentication/security |    ❌   |
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Build images and start all services (blocking) |
+| `npm run dev:detached` | Same, but runs in the background |
+| `npm run stop` | Stop all containers |
+| `npm run logs` | Tail logs from all services |
+| `npm run build` | Build Docker images without starting |
+
+## Makefile Targets
+
+| Target | What it does |
+| --- | --- |
+| `make up` | Start stack in the background |
+| `make down` | Stop stack |
+| `make build` | Build all Docker images |
+| `make push REGISTRY=you` | Push all images to Docker Hub |
+| `make save` | Export images to `./docker-images/*.tar` |
+| `make load` | Import `.tar` files back into Docker |
+| `make logs` | Tail all logs |
+| `make clean` | Remove all built images |
 
 ---
 
-# 🚀 Planned Improvements
+## API Endpoints
 
-* [ ] Implement actual file downloading
+All routes go through the API Gateway at `:3000`.
+
+### Auth
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/auth/status` | Check if a Telegram session is active |
+| `POST` | `/auth/send-code` | Send OTP to phone number |
+| `POST` | `/auth/sign-in` | Verify OTP and sign in |
+| `POST` | `/auth/2fa` | Submit 2FA password |
+
+### Groups & Content
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/groups` | List user's groups and channels |
+| `GET` | `/groups/:id/photo` | Get group/channel profile photo |
+| `GET` | `/groups/:id/content` | Get paginated content from a group |
+
+### Download
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `POST` | `/download` | Download Telegram media to local folder |
+
+### Health
+
+Every service exposes `GET /health` → `{"status":"ok","service":"<name>"}`.
+
+---
+
+## Environment Variables
+
+```env
+# Telegram API credentials (required) — get from https://my.telegram.org
+API_ID=your_api_id_here
+API_HASH=your_api_hash_here
+
+# Telegram session string — populated automatically after first login
+SESSION_STRING=
+
+# Service ports (optional — services have built-in defaults)
+AUTH_SERVICE_PORT=3001
+READ_SERVICE_PORT=3002
+DOWNLOAD_SERVICE_PORT=3003
+GUPLOAD_SERVICE_PORT=3004
+GDOWNLOAD_SERVICE_PORT=3005
+GATEWAY_PORT=3000
+UI_PORT=4200
+
+# Docker registry (your Docker Hub username)
+REGISTRY=your-dockerhub-username
+```
+
+> **Never commit `.env` or Telegram credentials to Git.**
+
+---
+
+## Download Destinations
+
+The `telegram-download-service` can write files to three locations, configured via environment variables in `docker-compose.yml`:
+
+| Env Var | Default mount | Purpose |
+| --- | --- | --- |
+| `DOWNLOADS_DESKTOP` | `~/Desktop` | Save to Mac/Windows desktop |
+| `DOWNLOADS_DOWNLOADS` | `~/Downloads` | Save to Downloads folder |
+| `DOWNLOADS_CUSTOM` | `./downloads/Custom` | Repo-local custom folder |
+
+---
+
+## Current Status
+
+| Feature | Status |
+| --- | :---: |
+| Telegram authentication | ✅ |
+| OTP login | ✅ |
+| Telegram 2FA | ✅ |
+| Persistent session | ✅ |
+| Group / channel listing | ✅ |
+| Group profile photos | ✅ |
+| Content retrieval | ✅ |
+| Content categorization | ✅ |
+| Content filtering by type | ✅ |
+| Pagination | ✅ |
+| Load more | ✅ |
+| Content selection | ✅ |
+| Telegram media download | ✅ |
+| Microservices / Docker | ✅ |
+| API Gateway | ✅ |
+| Google Drive upload | 🟡 In progress |
+| Google Drive download | 🟡 In progress |
+| Telegram URL input | 🟡 Partial |
+| Bulk download | ❌ |
+| Download progress indicators | ❌ |
+| API authentication / security | ❌ |
+
+---
+
+## Planned Improvements
+
+* [ ] Complete Google Drive upload and download integration
 * [ ] Implement bulk downloads
-* [ ] Support Telegram `t.me/...` URL downloads
+* [ ] Support `t.me/...` URL-based downloads
 * [ ] Add download progress indicators
 * [ ] Add download history
-* [ ] Improve error handling
-* [ ] Add API authentication
+* [ ] Add API authentication (JWT / API key)
 * [ ] Secure session storage
 * [ ] Add rate limiting
-* [ ] Improve responsive UI
-* [ ] Add proper production deployment configuration
+* [ ] Improve error handling
+* [ ] Production deployment configuration (HTTPS, env secrets)
 
 ---
 
-# ⚠️ Security Notice
+## Security Notice
 
-This project currently does **not** have authentication or authorization protection on the backend API.
+The backend API currently has **no authentication or authorization**. Anyone who can reach the Node.js gateway at port 3000 can access the Telegram data available through the API.
 
-Anyone who can access the Node.js server may potentially access the Telegram data available through the API.
+Before exposing this in a production or publicly accessible environment, implement:
 
-For example:
-
-```text
-Client
-   │
-   ▼
-Node.js :3000
-   │
-   ├── /groups
-   ├── /groups/:id/content
-   └── /download
-```
-
-Before using this application in a production or publicly accessible environment, implement:
-
-* API authentication
-* Authorization
-* Secure session storage
-* HTTPS
+* API authentication (JWT or API keys)
+* Authorization middleware
+* HTTPS / SSL termination
 * Rate limiting
 * Input validation
 * Proper CORS configuration
-* Secure environment variable management
+* Secure environment variable management (secrets manager)
 
 ---
 
-# 📌 Important
+## Dev Journals
 
-This project is intended for accessing content from Telegram accounts that the authenticated user is authorized to access.
+Detailed notes on architecture decisions, errors encountered, and Docker deep-dives are in [`dev-journals/`](./dev-journals/):
 
-Users are responsible for complying with Telegram's terms, applicable laws, and the rights of content owners when downloading or using content.
+* **Build Journal** — every error hit during the microservices migration and exactly how each was fixed
+* **Microservices & Docker Deep Dive** — first-principles guide to Docker, multi-stage builds, networking, and the API gateway
 
 ---
 
-# 📄 License
+## Important
 
-Add your preferred license here.
+This project is intended for accessing content from Telegram accounts the authenticated user is authorized to access. Users are responsible for complying with Telegram's terms of service, applicable laws, and the rights of content owners.
 
-For example:
+---
 
-```text
+## License
+
 MIT License
-```
 
 ---
 
-## 👨‍💻 Development
+## Development
 
-Contributions, improvements, and suggestions are welcome.
-
-If you find a bug or have an idea for a feature, feel free to open an issue or submit a pull request.
+Contributions, improvements, and suggestions are welcome. If you find a bug or have a feature idea, open an issue or submit a pull request.
