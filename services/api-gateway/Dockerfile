@@ -9,6 +9,5 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server.js ./
 EXPOSE 3000
-EXPOSE 9228
 USER node
-CMD ["node", "--inspect=0.0.0.0:9228", "server.js"]
+CMD ["node", "server.js"]

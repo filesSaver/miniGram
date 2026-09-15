@@ -4,6 +4,7 @@ import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 const BASE = '/api';
+const TOKEN_KEY = 'mg_jwt';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -12,22 +13,61 @@ export class AuthService {
   private _groupCache   = new Map<string, Group>();
   private _topicsCache  = new Map<string, Topic[]>();
   private _breakdownCache = new Map<string, GroupBreakdown>();
-  // key = groupId:topicId for topic breakdowns
   private _topicBreakdownCache = new Map<string, GroupBreakdown>();
-  // Message items cache: key = groupId  OR  groupId:topicId
   private _itemsCache   = new Map<string, ContentItem[]>();
 
   constructor(private http: HttpClient) {}
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  checkStatus(): Observable<{ authorized: boolean }> {
-    return this.http.get<{ authorized: boolean }>(`${BASE}/auth/status`);
+  // ── JWT helpers ───────────────────────────────────────────────────────────
+  getToken(): string | null {
+    return localStorage.getItem(TOKEN_KEY);
   }
-  sendCode(phoneNumber: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${BASE}/auth/send-code`, { phoneNumber });
+
+  private setToken(token: string): void {
+    localStorage.setItem(TOKEN_KEY, token);
   }
-  signIn(phoneNumber: string, code: string): Observable<any> {
-    return this.http.post<any>(`${BASE}/auth/sign-in`, { phoneNumber, code });
+
+  clearToken(): void {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  isLoggedIn(): boolean {
+    return !!this.getToken();
+  }
+
+  logout(): void {
+    this.clearToken();
+    this._groupsCache = null;
+    this._groupCache.clear();
+    this._topicsCache.clear();
+    this._breakdownCache.clear();
+    this._topicBreakdownCache.clear();
+    this._itemsCache.clear();
+  }
+
+  // ── App-level auth ────────────────────────────────────────────────────────
+  register(username: string, password: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/register`, { username, password });
+  }
+
+  appLogin(username: string, password: string): Observable<{ token: string; username: string }> {
+    return this.http.post<{ token: string; username: string }>(`${BASE}/auth/login`, { username, password })
+      .pipe(tap(res => this.setToken(res.token)));
+  }
+
+  saveSetup(apiId: number, apiHash: string, phone: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/setup`, { api_id: apiId, api_hash: apiHash, phone });
+  }
+
+  // ── Telegram auth ─────────────────────────────────────────────────────────
+  checkStatus(): Observable<{ authorized: boolean; hasSetup: boolean }> {
+    return this.http.get<{ authorized: boolean; hasSetup: boolean }>(`${BASE}/auth/status`);
+  }
+  sendCode(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/send-code`, {});
+  }
+  signIn(code: string): Observable<any> {
+    return this.http.post<any>(`${BASE}/auth/sign-in`, { code });
   }
   submit2FA(password: string): Observable<any> {
     return this.http.post<any>(`${BASE}/auth/2fa`, { password });
@@ -121,7 +161,9 @@ export class AuthService {
   }
 
   streamTopicBreakdown(groupId: string, topicId: number): EventSource {
-    return new EventSource(`/api/groups/${groupId}/topics/${topicId}/breakdown/stream`);
+    const token = this.getToken();
+    const url = `/api/groups/${groupId}/topics/${topicId}/breakdown/stream${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
   }
 
   // ── Stats / Breakdown ─────────────────────────────────────────────────────
@@ -138,10 +180,12 @@ export class AuthService {
   }
 
   streamGroupBreakdown(groupId: string): EventSource {
-    return new EventSource(`/api/groups/${groupId}/breakdown/stream`);
+    const token = this.getToken();
+    const url = `/api/groups/${groupId}/breakdown/stream${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
   }
 
-  // ── Cache helpers (call after a fresh download to bust stale counts) ──────
+  // ── Cache helpers ─────────────────────────────────────────────────────────
   bustGroupsCache() { this._groupsCache = null; }
   bustItemsCache(key: string) { this._itemsCache.delete(key); }
   hasItemsCache(key: string): boolean { return this._itemsCache.has(key); }

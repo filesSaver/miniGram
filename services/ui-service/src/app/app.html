@@ -4,19 +4,100 @@
   </div>
 }
 
+@if (step() === 'app-login') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Welcome to miniGram</h1>
+      <p class="subtitle">Sign in to your account</p>
+      <div class="input-group">
+        <input type="text" placeholder="Username"
+          [ngModel]="appUsername()" (ngModelChange)="appUsername.set($event)"
+          (keydown.enter)="doAppLogin()" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="password" placeholder="Password"
+          [ngModel]="appPassword()" (ngModelChange)="appPassword.set($event)"
+          (keydown.enter)="doAppLogin()" />
+        <button (click)="doAppLogin()" [disabled]="loading() || !appUsername() || !appPassword()">
+          {{ loading() ? 'Signing in...' : 'Sign In' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+      <button class="link" (click)="step.set('app-register'); error.set('')">
+        No account? Register
+      </button>
+    </div>
+  </div>
+}
+
+@if (step() === 'app-register') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Create Account</h1>
+      <p class="subtitle">Choose a username and password</p>
+      <div class="input-group">
+        <input type="text" placeholder="Username (3–30 chars, letters/numbers/_)"
+          [ngModel]="registerUsername()" (ngModelChange)="registerUsername.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="password" placeholder="Password (min 8 chars)"
+          [ngModel]="registerPassword()" (ngModelChange)="registerPassword.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="password" placeholder="Confirm password"
+          [ngModel]="registerConfirm()" (ngModelChange)="registerConfirm.set($event)" />
+        <button (click)="doRegister()" [disabled]="loading() || !registerUsername() || !registerPassword() || !registerConfirm()">
+          {{ loading() ? 'Creating...' : 'Register' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+      <button class="link" (click)="step.set('app-login'); error.set('')">← Back to sign in</button>
+    </div>
+  </div>
+}
+
+@if (step() === 'setup') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Connect Telegram</h1>
+      <p class="subtitle">
+        You need API credentials from Telegram to continue.<br/>
+        Go to <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org/apps</a>,
+        sign in, open <strong>API development tools</strong>, and create an app.
+        Copy the <strong>App api_id</strong> (a number) and <strong>App api_hash</strong> (a 32-char hex string).
+      </p>
+      <div class="input-group">
+        <input type="number" placeholder="api_id  (e.g. 1234567)"
+          [ngModel]="apiId()" (ngModelChange)="apiId.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="text" placeholder="api_hash  (32-char hex)"
+          [ngModel]="apiHash()" (ngModelChange)="apiHash.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="tel" placeholder="Phone number  (e.g. +91 9876543210)"
+          [ngModel]="setupPhone()" (ngModelChange)="setupPhone.set($event)" />
+        <button (click)="saveSetup()" [disabled]="loading() || !apiId() || !apiHash() || !setupPhone()">
+          {{ loading() ? 'Saving...' : 'Continue' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+    </div>
+  </div>
+}
+
 @if (step() === 'phone') {
   <div class="fullpage-center">
     <div class="auth-card">
       <h1>Sign in to Telegram</h1>
-      <p class="subtitle">Enter your phone number to receive a code</p>
+      <p class="subtitle">We'll send a login code to your registered phone number</p>
       <div class="input-group">
-        <input type="tel" placeholder="+91 9876543210"
-          [ngModel]="phoneNumber()" (ngModelChange)="phoneNumber.set($event)" />
-        <button (click)="sendCode()" [disabled]="loading() || !phoneNumber()">
+        <button (click)="sendCode()" [disabled]="loading()">
           {{ loading() ? 'Sending...' : 'Send Code' }}
         </button>
       </div>
       @if (error()) { <p class="error">{{ error() }}</p> }
+      <button class="link" (click)="step.set('setup'); error.set('')">← Change Telegram credentials</button>
     </div>
   </div>
 }
@@ -25,15 +106,16 @@
   <div class="fullpage-center">
     <div class="auth-card">
       <h1>Enter OTP</h1>
-      <p class="subtitle">Code sent to {{ phoneNumber() }}</p>
+      <p class="subtitle">Enter the code Telegram sent to your phone</p>
       <div class="input-group">
         <input type="text" placeholder="12345" maxlength="5"
-          [ngModel]="code()" (ngModelChange)="code.set($event)" />
+          [ngModel]="code()" (ngModelChange)="code.set($event)"
+          (keydown.enter)="signIn()" />
         <button (click)="signIn()" [disabled]="loading() || !code()">
           {{ loading() ? 'Verifying...' : 'Verify' }}
         </button>
       </div>
-      <button class="link" (click)="step.set('phone')">← Change number</button>
+      <button class="link" (click)="step.set('phone')">← Resend code</button>
       @if (error()) { <p class="error">{{ error() }}</p> }
     </div>
   </div>
@@ -46,7 +128,8 @@
       <p class="subtitle">Your account has 2FA enabled</p>
       <div class="input-group">
         <input type="password" placeholder="2FA Password"
-          [ngModel]="password()" (ngModelChange)="password.set($event)" />
+          [ngModel]="password()" (ngModelChange)="password.set($event)"
+          (keydown.enter)="submit2FA()" />
         <button (click)="submit2FA()" [disabled]="loading() || !password()">
           {{ loading() ? 'Verifying...' : 'Submit' }}
         </button>

@@ -28,7 +28,11 @@ jobs:
 
       - name: Build all service images
         run: docker compose build
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
 
       - name: Push all service images
         if: github.event_name == 'push'
         run: docker compose push
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
