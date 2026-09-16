@@ -1,7 +1,7 @@
 {
-  "name": "telegram-download-service",
+  "name": "db-service",
   "version": "1.0.0",
-  "description": "Downloads media files from Telegram",
+  "description": "Data access microservice — sole owner of the PostgreSQL connection",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,8 +11,7 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.2",
-    "telegram": "^2.26.22"
+    "pg": "^8.13.3"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

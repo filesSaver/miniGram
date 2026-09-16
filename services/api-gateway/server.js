@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const { legacyCreateProxyMiddleware: proxy } = require('http-proxy-middleware');
 

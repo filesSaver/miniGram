@@ -10,6 +10,5 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/server.js ./
 RUN mkdir -p /app/downloads && chown -R node:node /app
 EXPOSE 3003
-EXPOSE 9231
 USER node
-CMD ["node", "--inspect=0.0.0.0:9231", "server.js"]
+CMD ["node", "server.js"]

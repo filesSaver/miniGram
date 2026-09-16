@@ -23,6 +23,8 @@
         </div>
       </div>
     }
+
+    <button class="logout-btn-top" (click)="logout()" title="Sign out">⏻ Logout</button>
   </header>
 
   <!-- ── Result banner ── -->
@@ -53,7 +55,7 @@
         @let g = group()!;
         <div class="group-info-card">
           <div class="gic-top">
-            <img class="gic-avatar" [src]="'/api/groups/' + groupId() + '/photo'" [alt]="g.name" loading="lazy" (error)="$any($event.target).style.display='none'" />
+            <img class="gic-avatar" [src]="authService.groupPhotoUrl(groupId())" [alt]="g.name" loading="lazy" (error)="$any($event.target).style.display='none'" />
             <div class="gic-header">
               <div class="gic-name-row">
                 <span class="gic-name">{{ g.name }}</span>
@@ -98,7 +100,7 @@
         <div class="group-info-card">
           <div class="gic-top">
             <img class="gic-avatar"
-                 [src]="'/api/groups/' + groupId() + '/photo'"
+                 [src]="authService.groupPhotoUrl(groupId())"
                  [alt]="g.name"
                  loading="lazy"
                  (error)="$any($event.target).style.display='none'" />

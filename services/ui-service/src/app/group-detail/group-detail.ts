@@ -106,7 +106,7 @@ export class GroupDetailComponent implements OnInit, OnDestroy {
 
   selectedCount = computed(() => this.selectedIds().size);
 
-  constructor(private authService: AuthService, private router: Router) {}
+  constructor(protected authService: AuthService, private router: Router) {}
 
   ngOnInit() {
     const gid = this.groupId();
@@ -418,5 +418,10 @@ export class GroupDetailComponent implements OnInit, OnDestroy {
     if (!bytes) return '';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  logout() {
+    this.authService.logout();
+    window.location.reload();
   }
 }

@@ -1,8 +1,26 @@
+@if (loadingGroups()) {
+  <div class="fullpage-center">
+    <div class="loading-state">
+      <span class="loader-ring"></span>
+      <span>Loading your groups…</span>
+    </div>
+  </div>
+} @else {
 <div class="page">
+
+  <!-- ── Top nav ── -->
+  <header class="home-nav">
+    <span class="nav-brand">
+      <span class="nb-mini">mini</span><span class="nb-gram">Gram</span><span class="nb-dot">.</span><span class="nb-load">load</span>
+    </span>
+    <button class="logout-btn" (click)="logout()" title="Sign out">⏻ Logout</button>
+  </header>
 
   <!-- ── Hero ── -->
   <section class="hero">
-    <h1 class="hero-title">Telegram<span class="hero-accent"> Downloader</span></h1>
+    <h1 class="hero-title">
+      <span class="brand-mini">mini</span><span class="brand-gram">Gram</span><span class="brand-dot">.</span><span class="brand-load">load</span>
+    </h1>
     <p class="hero-sub">Browse your groups &amp; channels and download content</p>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
@@ -19,7 +37,7 @@
       }
     </div>
 
-    @if (!loadingGroups() && totalGroups() > 0) {
+    @if (totalGroups() > 0) {
       <div class="hero-stats">
         <span class="hs-item"><strong>{{ totalGroups() }}</strong> total</span>
         <span class="hs-dot">·</span>
@@ -32,12 +50,7 @@
 
   <!-- ── Groups list ── -->
   <main class="results">
-    @if (loadingGroups()) {
-      <div class="loading-state">
-        <span class="loader-ring"></span>
-        <span>Loading your groups…</span>
-      </div>
-    } @else if (filteredGroups().length === 0 && searchQuery()) {
+    @if (filteredGroups().length === 0 && searchQuery()) {
       <p class="empty-state">No groups match "<strong>{{ searchQuery() }}</strong>"</p>
     } @else if (groups().length === 0) {
       <p class="empty-state">No groups found.</p>
@@ -49,11 +62,15 @@
         @for (group of filteredGroups(); track group.id) {
           <div class="group-card" (click)="goToGroup(group.id)">
 
-            <img class="group-avatar"
-                 [src]="'/api/groups/' + group.id + '/photo'"
-                 [alt]="group.name"
-                 loading="lazy"
-                 (error)="$any($event.target).style.display='none'" />
+            <div class="group-avatar-wrap">
+              @if (photoState(group.id) === 'loaded') {
+                <img class="group-avatar" [src]="photoUrl(group.id)" [alt]="group.name" />
+              } @else if (photoState(group.id) === 'loading') {
+                <div class="group-avatar group-avatar-shimmer"></div>
+              } @else {
+                <div class="group-avatar group-avatar-initial">{{ group.name.charAt(0).toUpperCase() }}</div>
+              }
+            </div>
 
             <div class="group-body">
               <div class="group-name-row">
@@ -95,3 +112,4 @@
   </main>
 
 </div>
+}
