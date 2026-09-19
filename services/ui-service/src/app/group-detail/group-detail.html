@@ -1,37 +1,42 @@
 <div class="app-layout">
 
-  <!-- ── Top bar ── -->
-  <header class="topbar">
-    <a routerLink="/" class="back-btn">← Back</a>
-    <h1>{{ groupName() || 'Group Content' }}</h1>
+  <!-- ── Top nav ── -->
+  <header class="home-nav">
+    <div class="nav-left">
+      <a routerLink="/" class="nav-back">←</a>
+      <span class="nav-brand">
+        <span class="nb-mini">Mini</span><span class="nb-gram">Gram</span><span class="nb-dot">.</span><span class="nb-load">load</span>
+      </span>
+            <span class="nav-page-title-line">|</span>
 
-    @if (selectedCount() > 0) {
-      <span class="selection-badge">{{ selectedCount() }} selected</span>
-      <button class="download-btn" [disabled]="downloading()" (click)="openLocationPicker()">
-        ⬇ Download
-      </button>
-    }
-
-    @if (downloading() && downloadProgress()) {
-      <div class="topbar-progress">
-        <span class="mini-spinner"></span>
-        <span>{{ downloadProgress()!.done }}/{{ downloadProgress()!.total }}</span>
-        <div class="topbar-bar">
-          <div class="topbar-bar-fill"
-               [style.width.%]="(downloadProgress()!.done / downloadProgress()!.total) * 100">
-          </div>
-        </div>
-      </div>
-    }
-  </header>
-
-  <!-- ── Result banner ── -->
-  @if (downloadResult()) {
-    <div class="download-result" [class.error]="downloadResult().startsWith('Error')">
-      {{ downloadResult() }}
-      <button class="dismiss-btn" (click)="downloadResult.set('')">✕</button>
+      <span class="nav-page-title">{{ groupName() || 'Group' }}</span>
     </div>
-  }
+
+    <!-- Desktop actions -->
+    <div class="nav-actions">
+      <a class="bmc-btn" href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer">
+        <img src="/bmc-logo.png" alt="Buy me a coffee" class="bmc-logo" />
+      </a>
+      <button class="logout-btn" (click)="logout()" title="Sign out">⏻ Logout</button>
+    </div>
+
+    <!-- Mobile hamburger + dropdown -->
+    <div class="hamburger-wrap">
+      <button class="hamburger-btn" (click)="menuOpen.set(!menuOpen())" aria-label="Menu">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+      </button>
+      @if (menuOpen()) {
+        <div class="mobile-menu">
+          <a class="mobile-menu-bmc" href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer" (click)="menuOpen.set(false)">
+            <img src="/bmc-logo.png" alt="Buy me a coffee" class="bmc-logo" />
+          </a>
+          <button class="mobile-menu-logout" (click)="logout()">⏻ Logout</button>
+        </div>
+      }
+    </div>
+  </header>
 
   <!-- ── Tabs (only for non-forum groups) ── -->
   @if (!group()?.forum) {
@@ -53,7 +58,7 @@
         @let g = group()!;
         <div class="group-info-card">
           <div class="gic-top">
-            <img class="gic-avatar" [src]="'/api/groups/' + groupId() + '/photo'" [alt]="g.name" loading="lazy" (error)="$any($event.target).style.display='none'" />
+            <img class="gic-avatar" [src]="authService.groupPhotoUrl(groupId())" [alt]="g.name" loading="lazy" (error)="$any($event.target).style.display='none'" />
             <div class="gic-header">
               <div class="gic-name-row">
                 <span class="gic-name">{{ g.name }}</span>
@@ -96,12 +101,12 @@
 
         <!-- Group info card -->
         <div class="group-info-card">
-          <div class="gic-top">
-            <img class="gic-avatar"
-                 [src]="'/api/groups/' + groupId() + '/photo'"
-                 [alt]="g.name"
-                 loading="lazy"
-                 (error)="$any($event.target).style.display='none'" />
+          <img class="gic-avatar"
+               [src]="authService.groupPhotoUrl(groupId())"
+               [alt]="g.name"
+               loading="lazy"
+               (error)="$any($event.target).style.display='none'" />
+          <div class="gic-body">
             <div class="gic-header">
               <div class="gic-name-row">
                 <span class="gic-name">{{ g.name }}</span>
@@ -118,59 +123,56 @@
                 <p class="gic-about">{{ g.about }}</p>
               }
             </div>
-          </div>
 
-          <div class="gic-meta-grid">
-            @if (g.memberCount !== null) {
-              <div class="meta-cell">
-                <span class="meta-label">Members</span>
-                <span class="meta-value">{{ g.memberCount | number }}</span>
-              </div>
-            }
-            @if (g.adminCount !== null && g.adminCount > 0) {
-              <div class="meta-cell">
-                <span class="meta-label">Admins</span>
-                <span class="meta-value">{{ g.adminCount | number }}</span>
-              </div>
-            }
-            @if (g.createdAt) {
-              <div class="meta-cell">
-                <span class="meta-label">Created</span>
-                <span class="meta-value">{{ g.createdAt | date:'mediumDate' }}</span>
-              </div>
-            }
-            @if (g.type === 'channel') {
-              <div class="meta-cell">
-                <span class="meta-label">Broadcast</span>
-                <span class="meta-value">{{ g.broadcast ? 'Yes' : 'No' }}</span>
-              </div>
-            }
-          </div>
-
-          @let flags = trueFlagsOf(g);
-          @if (flags.length > 0) {
-            <div class="gic-flags">
-              @for (f of flags; track f) {
-                <span class="flag-chip">{{ f }}</span>
+            <div class="gic-meta-grid">
+              @if (g.memberCount !== null) {
+                <div class="meta-cell">
+                  <span class="meta-label">Members</span>
+                  <span class="meta-value">{{ g.memberCount | number }}</span>
+                </div>
+              }
+              @if (g.adminCount !== null && g.adminCount > 0) {
+                <div class="meta-cell">
+                  <span class="meta-label">Admins</span>
+                  <span class="meta-value">{{ g.adminCount | number }}</span>
+                </div>
+              }
+              @if (g.createdAt) {
+                <div class="meta-cell">
+                  <span class="meta-label">Created</span>
+                  <span class="meta-value">{{ g.createdAt | date:'mediumDate' }}</span>
+                </div>
+              }
+              @if (g.type === 'channel') {
+                <div class="meta-cell">
+                  <span class="meta-label">Broadcast</span>
+                  <span class="meta-value">{{ g.broadcast ? 'Yes' : 'No' }}</span>
+                </div>
               }
             </div>
-          }
+
+            @let flags = trueFlagsOf(g);
+            @if (flags.length > 0) {
+              <div class="gic-flags">
+                @for (f of flags; track f) {
+                  <span class="flag-chip">{{ f }}</span>
+                }
+              </div>
+            }
+          </div>
         </div>
 
         <!-- Content stats card -->
         @if (groupStats()) {
           <div class="stats-overview">
 
-            <!-- Total — loads instantly -->
             <div class="total-messages-card">
               <span class="total-messages-number">{{ groupStats()!.total | number }}</span>
               <span class="total-messages-label">Total Messages</span>
             </div>
 
-            <!-- Per-type breakdown — loads in background -->
             <div class="breakdown-grid">
               @if (loadingBreakdown()) {
-                <!-- Show progress bar across all 6 tiles while scanning -->
                 <div class="breakdown-scanning">
                   @if (scanProgress()) {
                     @let p = scanProgress()!;
@@ -252,7 +254,7 @@
                 <input type="checkbox"
                        [checked]="selectedIds().size > 0 && rangeItems().every(i => selectedIds().has(strId(i.id)))"
                        (change)="selectAllRange()" />
-                <span>Select all not yet downloaded ({{ rangeItems().length }} items found)</span>
+                <span>Select all ({{ rangeItems().length }} items found)</span>
               </label>
               @if (selectedCount() > 0) {
                 <span class="range-selected-hint">{{ selectedCount() }} selected — click ⬇ Download in the toolbar</span>
@@ -261,21 +263,11 @@
 
             <div class="item-list">
               @for (item of rangeItems(); track item.id) {
-                @let ds = displayStatus(item.id);
-                @let prog = itemProgress(item.id);
-                @let entry = logEntry(item.id);
-
-                <div class="item-row"
-                     [class.selected]="isSelected(item.id)"
-                     [class.s-queued]="ds === 'queued'"
-                     [class.s-downloading]="ds === 'downloading'"
-                     [class.s-done]="ds === 'done'"
-                     [class.s-error]="ds === 'error'"
-                     (click)="ds === 'idle' || ds === 'not-downloaded' ? toggleItem(item.id) : null">
+                <div class="item-row" [class.selected]="isSelected(item.id)"
+                     (click)="toggleItem(item.id)">
 
                   <input type="checkbox" class="item-checkbox"
                          [checked]="isSelected(item.id)"
-                         [disabled]="ds !== 'idle' && ds !== 'not-downloaded'"
                          (click)="$event.stopPropagation()"
                          (change)="toggleItem(item.id)" />
 
@@ -288,33 +280,18 @@
                       @if (item.fileSize) { · {{ formatSize(item.fileSize) }} }
                       @if (item.date) { · {{ item.date | date:'mediumDate' }} }
                     </span>
-                    @if (ds === 'downloading') {
-                      <div class="progress-bar-wrap">
-                        <div class="progress-bar-track"><div class="progress-bar-fill" [style.width.%]="prog.pct"></div></div>
-                        <span class="progress-label">{{ prog.pct }}% @if (prog.total > 0) { · {{ formatSize(prog.downloaded) }} / {{ formatSize(prog.total) }} }</span>
-                      </div>
-                    }
-                    @if (ds === 'queued') { <span class="queue-label">In queue…</span> }
                   </div>
 
                   <span class="item-badge" [class]="item.type">{{ item.type }}</span>
 
                   <div class="item-actions">
-                    @switch (ds) {
-                      @case ('downloading') { <span class="status-icon spinning"><span class="mini-spinner dark"></span></span> }
-                      @case ('queued')      { <span class="status-icon queued" title="Queued">⏳</span> }
-                      @case ('done') {
-                        <span class="status-icon done" title="Downloaded">✓</span>
-                        @if (entry?.filePath) {
-                          <button class="open-btn" title="Open file" (click)="$event.stopPropagation(); openFile(entry!.filePath!)">▶</button>
-                          <button class="open-btn folder" title="Show in folder" (click)="$event.stopPropagation(); openFolder(entry!.filePath!)">📂</button>
-                        }
-                      }
-                      @case ('error') {
-                        <span class="status-icon error" title="Failed">✕</span>
-                        <button class="retry-btn" title="Retry" (click)="$event.stopPropagation(); retryItem(strId(item.id))">↺</button>
-                      }
-                      @case ('skipped') { <span class="status-icon skipped" title="No media">—</span> }
+                    @if (isPending(item.id)) {
+                      <span class="status-icon pending" title="Downloading — do not close this tab"><span class="mini-spinner dark"></span> Downloading…</span>
+                    } @else if (isDownloaded(item.id)) {
+                      <span class="status-icon done" title="Downloaded">✓</span>
+                      <button class="open-btn downloaded" title="Download again" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
+                    } @else {
+                      <button class="open-btn" title="Download" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
                     }
                   </div>
                 </div>
@@ -353,27 +330,17 @@
                    [checked]="allSelected()"
                    [indeterminate]="someSelected()"
                    (change)="toggleAll()" />
-            <span>Select all not yet downloaded ({{ filteredItems().length }})</span>
+            <span>Select all ({{ filteredItems().length }})</span>
           </label>
         </div>
 
         <div class="item-list">
           @for (item of filteredItems(); track item.id) {
-            @let ds = displayStatus(item.id);
-            @let prog = itemProgress(item.id);
-            @let entry = logEntry(item.id);
-
-            <div class="item-row"
-                 [class.selected]="isSelected(item.id)"
-                 [class.s-queued]="ds === 'queued'"
-                 [class.s-downloading]="ds === 'downloading'"
-                 [class.s-done]="ds === 'done'"
-                 [class.s-error]="ds === 'error'"
-                 (click)="ds === 'idle' || ds === 'not-downloaded' ? toggleItem(item.id) : null">
+            <div class="item-row" [class.selected]="isSelected(item.id)"
+                 (click)="toggleItem(item.id)">
 
               <input type="checkbox" class="item-checkbox"
                      [checked]="isSelected(item.id)"
-                     [disabled]="ds !== 'idle' && ds !== 'not-downloaded'"
                      (click)="$event.stopPropagation()"
                      (change)="toggleItem(item.id)" />
 
@@ -385,88 +352,46 @@
                   @if (item.fileSize) { {{ formatSize(item.fileSize) }} · }
                   @if (item.date) { {{ item.date | date:'mediumDate' }} }
                 </span>
-
-                @if (ds === 'downloading') {
-                  <div class="progress-bar-wrap">
-                    <div class="progress-bar-track">
-                      <div class="progress-bar-fill" [style.width.%]="prog.pct"></div>
-                    </div>
-                    <span class="progress-label">
-                      {{ prog.pct }}%
-                      @if (prog.total > 0) {
-                        · {{ formatSize(prog.downloaded) }} / {{ formatSize(prog.total) }}
-                      }
-                    </span>
-                  </div>
-                }
-
-                @if (ds === 'queued') {
-                  <span class="queue-label">In queue…</span>
-                }
               </div>
 
               <span class="item-badge" [class]="item.type">{{ item.type }}</span>
 
               <div class="item-actions">
-                @switch (ds) {
-                  @case ('downloading') {
-                    <span class="status-icon spinning" title="Downloading…">
-                      <span class="mini-spinner dark"></span>
-                    </span>
-                  }
-                  @case ('queued') {
-                    <span class="status-icon queued" title="Queued">⏳</span>
-                  }
-                  @case ('done') {
-                    <span class="status-icon done" title="Downloaded">✓</span>
-                    @if (entry?.filePath) {
-                      <button class="open-btn" title="Open file" (click)="$event.stopPropagation(); openFile(entry!.filePath!)">▶</button>
-                      <button class="open-btn folder" title="Show in folder" (click)="$event.stopPropagation(); openFolder(entry!.filePath!)">📂</button>
+                    @if (isPending(item.id)) {
+                      <span class="status-icon pending" title="Downloading — do not close this tab"><span class="mini-spinner dark"></span> Downloading…</span>
+                    } @else if (isDownloaded(item.id)) {
+                      <span class="status-icon done" title="Downloaded">✓</span>
+                      <button class="open-btn downloaded" title="Download again" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
+                    } @else {
+                      <button class="open-btn" title="Download" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
                     }
-                  }
-                  @case ('error') {
-                    <span class="status-icon error" title="Failed">✕</span>
-                    <button class="retry-btn" title="Retry" (click)="$event.stopPropagation(); retryItem(strId(item.id))">↺</button>
-                  }
-                  @case ('skipped') {
-                    <span class="status-icon skipped" title="No media">—</span>
-                  }
-                }
-              </div>
+                  </div>
             </div>
           }
         </div>
       }
     </main>
-</div>
-@if (showLocationPicker()) {
-  <div class="modal-backdrop" (click)="cancelLocationPicker()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <h2 class="modal-title">Choose download location</h2>
-      <p class="modal-subtitle">Files will be saved inside a sub-folder named after the group.</p>
 
-      <div class="dest-options">
-        @for (opt of destOptions(); track opt.key) {
-          <button class="dest-option" [class.active]="selectedDest() === opt.key" (click)="selectDest(opt.key)">
-            <span class="dest-icon">
-              @switch (opt.key) {
-                @case ('desktop')   { 🖥️ }
-                @case ('downloads') { 📥 }
-                @default            { 📁 }
-              }
-            </span>
-            <span class="dest-label">{{ opt.label }}</span>
-            <span class="dest-path">{{ opt.path }}</span>
-          </button>
+  <!-- ── Sticky selection bar ── -->
+  @if (selectedCount() > 0) {
+    <div class="sticky-bar">
+      <div class="sticky-bar-left">
+        <span class="sticky-count">{{ selectedCount() }} selected</span>
+@if (totalSelectedSize() > 0) {
+          <span class="sticky-size">{{ totalSelectedSizePartial() ? '~' : '' }}{{ formatSize(totalSelectedSize()) }}</span>
+        } @else if (totalSelectedSizePartial()) {
+          <span class="sticky-size sticky-size-unknown">size unknown</span>
         }
       </div>
-
-      <div class="modal-actions">
-        <button class="modal-cancel" (click)="cancelLocationPicker()">Cancel</button>
-        <button class="modal-confirm" (click)="confirmDownload()">
-          Download {{ selectedCount() }} item{{ selectedCount() !== 1 ? 's' : '' }}
+      <div class="sticky-bar-actions">
+        <button class="sticky-select-all" (click)="toggleAll()">
+          {{ allSelected() ? 'Deselect all' : 'Select all (' + filteredItems().length + ')' }}
+        </button>
+        <button class="sticky-download" (click)="downloadSelected()">
+          Download {{ selectedCount() }}
         </button>
       </div>
     </div>
-  </div>
-}
+  }
+
+</div>

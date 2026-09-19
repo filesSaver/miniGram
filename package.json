@@ -9,7 +9,13 @@
     "stop": "docker compose down",
     "logs": "docker compose logs -f",
     "build": "docker compose build",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+
+    "local:db": "docker compose -f docker-compose.local.yml --env-file .env.local up -d",
+    "local:db:stop": "docker compose -f docker-compose.local.yml down",
+    "local:install": "npm i --prefix services/db-service && npm i --prefix services/auth-service && npm i --prefix services/telegram-read-service && npm i --prefix services/telegram-download-service && npm i --prefix services/api-gateway && npm i --prefix services/ui-service",
+    "local:start": "node scripts/local-start.js",
+    "local:stop": "npm run local:db:stop"
   },
   "repository": {
     "type": "git",

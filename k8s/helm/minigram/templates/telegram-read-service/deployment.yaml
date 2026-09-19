@@ -1,0 +1,78 @@
+# ── telegram-read-service Deployment ─────────────────────────────────────────
+#
+# WHY: Connects to Telegram using the user's saved session string (fetched from
+# db-service) and reads groups, topics, and messages. Streams results back
+# to the client using SSE (Server-Sent Events).
+#
+# WHY replicas: 1 (IMPORTANT — do not increase):
+#   Has an in-memory messageCache Map that stores fetched messages per user.
+#   With multiple replicas, a user's requests could hit different pods —
+#   one with a warm cache and another that must re-fetch from Telegram.
+#   This causes inconsistency and unnecessary Telegram API load.
+#   Keep at 1 replica until the cache is moved to Redis.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegram-read-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telegram-read-service
+spec:
+  replicas: {{ .Values.telegramReadService.replicas }}
+  selector:
+    matchLabels:
+      app: telegram-read-service
+  template:
+    metadata:
+      labels:
+        app: telegram-read-service
+    spec:
+      initContainers:
+        - name: wait-for-db-service
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for db-service:{{ .Values.dbService.port }}..."
+              until nc -z db-service {{ .Values.dbService.port }}; do
+                sleep 2
+              done
+              echo "db-service is ready."
+
+      containers:
+        - name: telegram-read-service
+          image: {{ .Values.telegramReadService.image }}
+          ports:
+            - containerPort: {{ .Values.telegramReadService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.telegramReadService.port }}"
+            - name: DB_SERVICE_URL
+              value: "http://db-service:{{ .Values.dbService.port }}"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.telegramReadService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.telegramReadService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

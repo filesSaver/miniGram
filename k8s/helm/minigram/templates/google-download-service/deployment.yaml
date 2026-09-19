@@ -1,0 +1,50 @@
+# ── google-download-service Deployment ───────────────────────────────────────
+#
+# Future service for downloading files from Google Drive.
+# Currently a placeholder — real implementation will use the googleapis SDK.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: google-download-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: google-download-service
+spec:
+  replicas: {{ .Values.googleDownloadService.replicas }}
+  selector:
+    matchLabels:
+      app: google-download-service
+  template:
+    metadata:
+      labels:
+        app: google-download-service
+    spec:
+      containers:
+        - name: google-download-service
+          image: {{ .Values.googleDownloadService.image }}
+          ports:
+            - containerPort: {{ .Values.googleDownloadService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.googleDownloadService.port }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.googleDownloadService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.googleDownloadService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

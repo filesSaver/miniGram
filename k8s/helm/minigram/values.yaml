@@ -1,0 +1,94 @@
+# ── values.yaml ───────────────────────────────────────────────────────────────
+#
+# This is the CENTRAL CONFIG FILE for the entire deployment.
+# To change image tags, replica counts, ports, or storage size — edit here.
+# You should NOT need to touch any file inside templates/ for routine changes.
+#
+# SECRETS (JWT_SECRET, DB passwords) are NOT here — they live in
+# templates/secret.yaml and must be filled in before deploying.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Kubernetes namespace all resources are created in
+namespace: minigram
+
+# ── PostgreSQL ────────────────────────────────────────────────────────────────
+postgres:
+  image: postgres:16-alpine
+  port: 5432
+  storage:
+    # EBS volume size for PostgreSQL data. Increase before first deploy if needed.
+    # Cannot be shrunk after the PVC is created.
+    size: 20Gi
+    storageClass: gp2   # Default EKS storage class (EBS). Change to gp3 if you
+                        # create a custom StorageClass for better performance.
+
+# ── db-service ────────────────────────────────────────────────────────────────
+# Thin Node.js wrapper over PostgreSQL. Handles all DB read/write for other services.
+dbService:
+  image: sauravmehta/content-scrapper-db-service:latest
+  port: 3006
+  replicas: 1
+
+# ── auth-service ──────────────────────────────────────────────────────────────
+# Handles Telegram login (OTP flow) and issues JWTs.
+# KEEP replicas: 1 — holds in-memory OTP state that breaks with multiple pods.
+authService:
+  image: sauravmehta/content-scrapper-auth-service:latest
+  port: 3001
+  replicas: 1
+
+# ── telegram-read-service ─────────────────────────────────────────────────────
+# Reads Telegram groups/messages and streams them via SSE.
+# KEEP replicas: 1 — has in-memory message cache that breaks with multiple pods.
+telegramReadService:
+  image: sauravmehta/content-scrapper-telegram-read-service:latest
+  port: 3002
+  replicas: 1
+
+# ── telegram-download-service ─────────────────────────────────────────────────
+# Downloads files from Telegram and streams them directly to the browser.
+# KEEP replicas: 1 — has in-memory download queue/client pool.
+telegramDownloadService:
+  image: sauravmehta/content-scrapper-telegram-download-service:latest
+  port: 3003
+  replicas: 1
+
+# ── google-upload-service ─────────────────────────────────────────────────────
+# Future Google Drive upload service. Stateless — safe to scale.
+googleUploadService:
+  image: sauravmehta/content-scrapper-google-upload-service:latest
+  port: 3004
+  replicas: 1
+
+# ── google-download-service ───────────────────────────────────────────────────
+# Future Google Drive download service. Stateless — safe to scale.
+googleDownloadService:
+  image: sauravmehta/content-scrapper-google-download-service:latest
+  port: 3005
+  replicas: 1
+
+# ── api-gateway ───────────────────────────────────────────────────────────────
+# Reverse proxy — routes all /auth, /groups, /download traffic to the right service.
+# Stateless — safe to scale up if needed.
+apiGateway:
+  image: sauravmehta/content-scrapper-api-gateway:latest
+  port: 3000
+  replicas: 1
+
+# ── ui-service ────────────────────────────────────────────────────────────────
+# nginx serving the compiled Angular app. Proxies /api/* to api-gateway.
+# Stateless — safe to scale up.
+uiService:
+  image: sauravmehta/content-scrapper-ui-service:latest
+  port: 80
+  replicas: 1
+
+# ── Ingress ───────────────────────────────────────────────────────────────────
+# Controls the AWS Application Load Balancer (ALB) that handles public traffic.
+ingress:
+  # Leave host empty to use the auto-generated ALB DNS name.
+  # Set to your custom domain (e.g. app.example.com) if you have one.
+  host: ""
+  # Set to true if you add an ACM certificate ARN below for HTTPS
+  tlsEnabled: false
+  # acmCertificateArn: "arn:aws:acm:ap-south-1:ACCOUNT_ID:certificate/CERT_ID"

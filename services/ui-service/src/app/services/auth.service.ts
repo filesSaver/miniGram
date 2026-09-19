@@ -1,9 +1,16 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
-import { tap } from 'rxjs/operators';
+import { tap, map } from 'rxjs/operators';
 
 const BASE = '/api';
+// Downloads must bypass the Angular dev-proxy (which buffers the full response).
+// In production BASE_DIRECT === BASE (same origin). Locally it hits the gateway directly.
+const BASE_DIRECT = (typeof window !== 'undefined' && window.location.port === '4200')
+  ? 'http://localhost:3000'
+  : '';
+const TOKEN_KEY = 'mg_jwt';
+const GROUPS_CACHE_KEY = 'mg_groups_cache';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -12,51 +19,126 @@ export class AuthService {
   private _groupCache   = new Map<string, Group>();
   private _topicsCache  = new Map<string, Topic[]>();
   private _breakdownCache = new Map<string, GroupBreakdown>();
-  // key = groupId:topicId for topic breakdowns
   private _topicBreakdownCache = new Map<string, GroupBreakdown>();
-  // Message items cache: key = groupId  OR  groupId:topicId
   private _itemsCache   = new Map<string, ContentItem[]>();
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient) {
+    // Warm in-memory cache from localStorage on service init
+    const stored = localStorage.getItem(GROUPS_CACHE_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        this._groupsCache = parsed;
+        parsed.groups.forEach((g: Group) => this._groupCache.set(g.id, g));
+      } catch {
+        localStorage.removeItem(GROUPS_CACHE_KEY);
+      }
+    }
+  }
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  checkStatus(): Observable<{ authorized: boolean }> {
-    return this.http.get<{ authorized: boolean }>(`${BASE}/auth/status`);
+  // ── JWT helpers ───────────────────────────────────────────────────────────
+  getToken(): string | null {
+    return localStorage.getItem(TOKEN_KEY);
   }
-  sendCode(phoneNumber: string): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${BASE}/auth/send-code`, { phoneNumber });
+
+  private setToken(token: string): void {
+    localStorage.setItem(TOKEN_KEY, token);
   }
-  signIn(phoneNumber: string, code: string): Observable<any> {
-    return this.http.post<any>(`${BASE}/auth/sign-in`, { phoneNumber, code });
+
+  clearToken(): void {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+
+  isLoggedIn(): boolean {
+    return !!this.getToken();
+  }
+
+  logout(): void {
+    this.clearToken();
+    this._groupsCache = null;
+    this._groupCache.clear();
+    this._topicsCache.clear();
+    this._breakdownCache.clear();
+    this._topicBreakdownCache.clear();
+    this._itemsCache.clear();
+    this._photoCache.forEach(url => URL.revokeObjectURL(url));
+    this._photoCache.clear();
+    localStorage.removeItem(GROUPS_CACHE_KEY);
+  }
+
+  // ── App-level auth ────────────────────────────────────────────────────────
+  register(username: string, password: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/register`, { username, password });
+  }
+
+  appLogin(username: string, password: string): Observable<{ token: string; username: string }> {
+    return this.http.post<{ token: string; username: string }>(`${BASE}/auth/login`, { username, password })
+      .pipe(tap(res => this.setToken(res.token)));
+  }
+
+  saveSetup(apiId: number, apiHash: string, phone: string): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/setup`, { api_id: apiId, api_hash: apiHash, phone });
+  }
+
+  // ── Telegram auth ─────────────────────────────────────────────────────────
+  checkStatus(): Observable<{ authorized: boolean; hasSetup: boolean }> {
+    return this.http.get<{ authorized: boolean; hasSetup: boolean }>(`${BASE}/auth/status`);
+  }
+  sendCode(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${BASE}/auth/send-code`, {});
+  }
+  signIn(code: string): Observable<any> {
+    return this.http.post<any>(`${BASE}/auth/sign-in`, { code });
   }
   submit2FA(password: string): Observable<any> {
     return this.http.post<any>(`${BASE}/auth/2fa`, { password });
   }
 
   // ── Download ──────────────────────────────────────────────────────────────
-  download(url: string): Observable<any> {
-    return this.http.post<any>(`${BASE}/download`, { url });
+  getUserId(): number | null {
+    const token = this.getToken();
+    if (!token) return null;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.sub ?? null;
+    } catch { return null; }
   }
-  downloadBatch(groupId: string, groupName: string, messageIds: string[], destKey: string): Observable<{ jobId: string; status: string; total: number }> {
-    return this.http.post<{ jobId: string; status: string; total: number }>(`${BASE}/download/batch`, { groupId, groupName, messageIds, destKey });
+
+  downloadFile(groupId: string, messageId: string | number, fileName: string): void {
+    const token = this.getToken();
+    const params = new URLSearchParams({
+      groupId,
+      messageId: String(messageId),
+      token: token ?? '',
+    });
+    const a = document.createElement('a');
+    // Use BASE_DIRECT to bypass Angular dev-proxy buffering; in production this is the same origin
+    a.href = `${BASE_DIRECT}/download/file?${params}`;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
-  getDownloadStatus(jobId: string): Observable<DownloadJob> {
-    return this.http.get<DownloadJob>(`${BASE}/download/status/${jobId}`);
+
+  getGroupDownloadLog(groupId: string): Observable<DownloadEntry[]> {
+    const userId = this.getUserId();
+    if (!userId) return of([]);
+    return this.http.get<DownloadEntry[]>(`${BASE}/download/log-db/${groupId}?userId=${userId}`);
   }
-  getDownloadLocations(): Observable<{ desktop: string; downloads: string; custom: string }> {
-    return this.http.get<{ desktop: string; downloads: string; custom: string }>(`${BASE}/download/locations`);
-  }
+
   getDownloadCounts(): Observable<Record<string, number>> {
-    return this.http.get<Record<string, number>>(`${BASE}/download/counts`);
-  }
-  getDownloadLog(destKey: string, groupFolder: string): Observable<DownloadLog> {
-    return this.http.get<DownloadLog>(`${BASE}/download/log/${destKey}/${encodeURIComponent(groupFolder)}`);
-  }
-  openPath(filePath: string): Observable<{ ok: boolean }> {
-    return this.http.post<{ ok: boolean }>(`${BASE}/download/open`, { filePath });
+    const userId = this.getUserId();
+    if (!userId) return of({});
+    return this.http.get<Record<string, number>>(`${BASE}/download/counts-db/${userId}`);
   }
 
   // ── Groups ────────────────────────────────────────────────────────────────
+
+  // Returns cached groups synchronously (from memory or localStorage) — null if none
+  getGroupsFromCache(): { groups: Group[]; total: number; groupCount: number; channelCount: number } | null {
+    return this._groupsCache;
+  }
+
   getGroups(limit = 10, offset = 0): Observable<{ groups: Group[]; total: number; groupCount: number; channelCount: number; offset: number; limit: number }> {
     if (this._groupsCache) return of({ ...this._groupsCache, offset, limit });
     return this.http.get<{ groups: Group[]; total: number; groupCount: number; channelCount: number; offset: number; limit: number }>(
@@ -64,6 +146,7 @@ export class AuthService {
     ).pipe(tap(res => {
       this._groupsCache = { groups: res.groups, total: res.total, groupCount: res.groupCount, channelCount: res.channelCount };
       res.groups.forEach(g => this._groupCache.set(g.id, g));
+      localStorage.setItem(GROUPS_CACHE_KEY, JSON.stringify(this._groupsCache));
     }));
   }
 
@@ -121,7 +204,9 @@ export class AuthService {
   }
 
   streamTopicBreakdown(groupId: string, topicId: number): EventSource {
-    return new EventSource(`/api/groups/${groupId}/topics/${topicId}/breakdown/stream`);
+    const token = this.getToken();
+    const url = `/api/groups/${groupId}/topics/${topicId}/breakdown/stream${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
   }
 
   // ── Stats / Breakdown ─────────────────────────────────────────────────────
@@ -138,11 +223,44 @@ export class AuthService {
   }
 
   streamGroupBreakdown(groupId: string): EventSource {
-    return new EventSource(`/api/groups/${groupId}/breakdown/stream`);
+    const token = this.getToken();
+    const url = `/api/groups/${groupId}/breakdown/stream${token ? `?token=${token}` : ''}`;
+    return new EventSource(url);
   }
 
-  // ── Cache helpers (call after a fresh download to bust stale counts) ──────
-  bustGroupsCache() { this._groupsCache = null; }
+  // ── Photo cache (blob URLs, in-memory only) ───────────────────────────────
+  private _photoCache = new Map<string, string>();
+
+  // Fetch photo via HttpClient (JWT attached by interceptor), return blob URL
+  fetchGroupPhoto(groupId: string): Promise<string | null> {
+    const cached = this._photoCache.get(groupId);
+    if (cached) return Promise.resolve(cached);
+    return new Promise(resolve => {
+      this.http.get(`${BASE}/groups/${groupId}/photo`, { responseType: 'blob' }).subscribe({
+        next: (blob: Blob) => {
+          const url = URL.createObjectURL(blob);
+          this._photoCache.set(groupId, url);
+          resolve(url);
+        },
+        error: () => resolve(null),
+      });
+    });
+  }
+
+  getPhotoFromCache(groupId: string): string | null {
+    return this._photoCache.get(groupId) ?? null;
+  }
+
+  groupPhotoUrl(groupId: string): string {
+    const token = this.getToken();
+    return `/api/groups/${groupId}/photo${token ? `?token=${token}` : ''}`;
+  }
+
+  // ── Cache helpers ─────────────────────────────────────────────────────────
+  bustGroupsCache() {
+    this._groupsCache = null;
+    localStorage.removeItem(GROUPS_CACHE_KEY);
+  }
   bustItemsCache(key: string) { this._itemsCache.delete(key); }
   hasItemsCache(key: string): boolean { return this._itemsCache.has(key); }
   hasBreakdownCache(groupId: string): boolean { return this._breakdownCache.has(groupId); }
@@ -211,43 +329,16 @@ export interface ContentItem {
   mimeType: string | null;
 }
 
-export interface DownloadJob {
-  jobId: string;
-  status: 'running' | 'done' | 'failed';
-  total: number;
-  done: number;
-  downloaded: number;
-  folder: string | null;
-  results: DownloadResult[];
-  itemStatus: Record<string, ItemDownloadStatus>;
-  itemProgress: Record<string, ItemProgress>;
-  error: string | null;
-}
-
-export type ItemDownloadStatus = 'queued' | 'downloading' | 'done' | 'error' | 'skipped' | 'idle';
-
-export interface ItemProgress {
-  pct: number;
-  downloaded: number;
-  total: number;
+export interface DownloadEntry {
+  message_id: string;
+  file_name: string | null;
+  file_size: number | null;
+  ts: number;
 }
 
 export interface DownloadResult {
   messageId: string;
   status: string;
   fileName?: string;
-  filePath?: string;
   reason?: string;
-  skippedAlreadyDone?: boolean;
 }
-
-export interface DownloadLogEntry {
-  status: 'done' | 'error' | 'skipped';
-  fileName?: string;
-  filePath?: string;
-  fileSize?: number;
-  reason?: string;
-  ts: number;
-}
-
-export type DownloadLog = Record<string, DownloadLogEntry>;

@@ -1,0 +1,21 @@
+# ── ui-service Service ────────────────────────────────────────────────────────
+#
+# ClusterIP — "ui-service:80" internally.
+# The ALB Ingress routes all public traffic (/*) to this service.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui-service
+spec:
+  type: ClusterIP
+  selector:
+    app: ui-service
+  ports:
+    - name: http
+      port: {{ .Values.uiService.port }}
+      targetPort: {{ .Values.uiService.port }}

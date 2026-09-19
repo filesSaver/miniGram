@@ -1,0 +1,19 @@
+{
+  "name": "db-service",
+  "version": "1.0.0",
+  "description": "Data access microservice — sole owner of the PostgreSQL connection",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "pg": "^8.13.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}

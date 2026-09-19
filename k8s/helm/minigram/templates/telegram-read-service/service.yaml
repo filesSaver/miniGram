@@ -1,0 +1,21 @@
+# ── telegram-read-service Service ────────────────────────────────────────────
+#
+# ClusterIP — "telegram-read-service:3002" internally.
+# api-gateway proxies /groups/* to this service.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: telegram-read-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telegram-read-service
+spec:
+  type: ClusterIP
+  selector:
+    app: telegram-read-service
+  ports:
+    - name: http
+      port: {{ .Values.telegramReadService.port }}
+      targetPort: {{ .Values.telegramReadService.port }}

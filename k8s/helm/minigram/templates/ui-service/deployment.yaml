@@ -1,0 +1,55 @@
+# ── ui-service Deployment ─────────────────────────────────────────────────────
+#
+# WHY: Serves the compiled Angular application via nginx.
+# nginx also acts as a local reverse proxy: requests to /api/* are forwarded
+# to api-gateway:3000 (the nginx.conf inside the Docker image handles this).
+#
+# Angular is a Single Page Application (SPA) — nginx is configured with
+# "try_files $uri $uri/ /index.html" so that refreshing any route works.
+#
+# This service is STATELESS — safe to scale replicas up if needed.
+# No environment variables needed at runtime (config is baked into the build).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui-service
+spec:
+  replicas: {{ .Values.uiService.replicas }}
+  selector:
+    matchLabels:
+      app: ui-service
+  template:
+    metadata:
+      labels:
+        app: ui-service
+    spec:
+      containers:
+        - name: ui-service
+          image: {{ .Values.uiService.image }}
+          ports:
+            - containerPort: {{ .Values.uiService.port }}
+          # nginx returns 200 on / — use that as the health check
+          readinessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.uiService.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.uiService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"

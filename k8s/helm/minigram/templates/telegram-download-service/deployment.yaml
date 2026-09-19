@@ -1,0 +1,86 @@
+# ── telegram-download-service Deployment ─────────────────────────────────────
+#
+# WHY: Downloads files from Telegram channels and streams them directly to the
+# browser as binary HTTP responses. Supports resumable downloads (Range headers).
+# Logs completed downloads to db-service.
+#
+# WHY replicas: 1 (IMPORTANT — do not increase):
+#   Maintains two in-memory structures:
+#     - clientPool: one live Telegram MTProto connection per logged-in user
+#     - userQueues: per-user download queue (max 3 concurrent)
+#   With multiple replicas, a user's download request could hit a pod that
+#   has no established Telegram client for them, forcing a reconnect on every
+#   request, and breaking the queue ordering entirely.
+#   Keep at 1 replica until these are moved to a shared store.
+#
+# NO volume mount needed:
+#   Files are streamed directly from Telegram to the HTTP response — they
+#   are never written to disk. The /app/downloads directory in the container
+#   image is unused.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telegram-download-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telegram-download-service
+spec:
+  replicas: {{ .Values.telegramDownloadService.replicas }}
+  selector:
+    matchLabels:
+      app: telegram-download-service
+  template:
+    metadata:
+      labels:
+        app: telegram-download-service
+    spec:
+      initContainers:
+        - name: wait-for-db-service
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for db-service:{{ .Values.dbService.port }}..."
+              until nc -z db-service {{ .Values.dbService.port }}; do
+                sleep 2
+              done
+              echo "db-service is ready."
+
+      containers:
+        - name: telegram-download-service
+          image: {{ .Values.telegramDownloadService.image }}
+          ports:
+            - containerPort: {{ .Values.telegramDownloadService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.telegramDownloadService.port }}"
+            - name: DB_SERVICE_URL
+              value: "http://db-service:{{ .Values.dbService.port }}"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.telegramDownloadService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.telegramDownloadService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              # Downloads can be large files — allow more memory for buffering
+              memory: "1Gi"

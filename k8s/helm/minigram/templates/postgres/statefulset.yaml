@@ -1,0 +1,91 @@
+# ── PostgreSQL StatefulSet ────────────────────────────────────────────────────
+#
+# WHY StatefulSet instead of Deployment:
+#   Deployments are for stateless apps. PostgreSQL stores data on disk —
+#   if the pod restarts, it must attach to the SAME volume it had before.
+#   StatefulSets guarantee:
+#     1. A stable pod name (postgres-0) so DATABASE_URL never changes
+#     2. A volumeClaimTemplate that auto-creates and re-attaches the same
+#        EBS volume every time the pod restarts
+#
+# The EBS volume is created automatically by the EBS CSI driver add-on
+# that was installed in eksctl-cluster.yaml.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: postgres   # Must match the Service name below
+  replicas: 1             # Always 1 — PostgreSQL is not horizontally scalable this way
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - containerPort: {{ .Values.postgres.port }}
+          env:
+            # All credentials come from the Secret (templates/secret.yaml)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: POSTGRES_DB
+          # WHERE data is stored inside the container.
+          # Kubernetes binds the EBS volume here automatically.
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+          # Readiness: pod only receives traffic once Postgres accepts connections
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "$(POSTGRES_USER)"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          # Liveness: if Postgres stops accepting connections, restart the pod
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "$(POSTGRES_USER)"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+  # volumeClaimTemplates: Kubernetes auto-creates an EBS volume of this spec
+  # for each pod and re-attaches it on restarts. The volume persists even if
+  # the pod or node is deleted.
+  volumeClaimTemplates:
+    - metadata:
+        name: pg-data
+      spec:
+        accessModes: ["ReadWriteOnce"]  # EBS volumes can only attach to one node
+        storageClassName: {{ .Values.postgres.storage.storageClass }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage.size }}

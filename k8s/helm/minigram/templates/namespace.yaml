@@ -1,0 +1,12 @@
+# ── Namespace ─────────────────────────────────────────────────────────────────
+#
+# WHY: Groups all miniGram resources into one logical unit inside the cluster.
+# This means: kubectl get pods -n minigram shows only miniGram pods,
+# and you can delete everything in one shot with: kubectl delete ns minigram
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}

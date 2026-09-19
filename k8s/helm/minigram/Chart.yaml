@@ -1,0 +1,9 @@
+apiVersion: v2
+name: minigram
+description: >
+  Helm chart for the miniGram application — deploys all 6 microservices
+  (api-gateway, auth-service, db-service, telegram-read-service,
+  telegram-download-service, ui-service) plus PostgreSQL onto an EKS cluster.
+type: application
+version: 1.0.0
+appVersion: "latest"

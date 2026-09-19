@@ -1,14 +1,56 @@
-version: "3.9"
-
 # ── Shared network ─────────────────────────────────────────────────────────────
-# All services join this network. Inside it, services refer to each other
-# by their service name (e.g. http://auth-service:3001).
-# From your laptop, you reach them via the mapped host ports below.
 networks:
   app-network:
     driver: bridge
 
+# ── Persistent volumes ──────────────────────────────────────────────────────────
+volumes:
+  pg-data:
+
 services:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── DB Service ───────────────────────────────────────────────────────────────
+  db-service:
+    build:
+      context: ./services/db-service
+      dockerfile: Dockerfile
+    image: sauravmehta/content-scrapper-db-service:latest
+    environment:
+      PORT: 3006
+      DATABASE_URL: ${DATABASE_URL}
+    ports:
+      - "3006:3006"
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── Auth Service ─────────────────────────────────────────────────────────────
   auth-service:
@@ -16,15 +58,24 @@ services:
       context: ./services/auth-service
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-auth-service:latest
-    env_file: .env
     environment:
       PORT: 3001
+      DB_SERVICE_URL: http://db-service:3006
+      JWT_SECRET: ${JWT_SECRET}
     ports:
       - "3001:3001"
-      - "9230:9230"
     networks:
       - app-network
     restart: unless-stopped
+    depends_on:
+      db-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # ── Telegram Read Service ────────────────────────────────────────────────────
   telegram-read-service:
@@ -32,15 +83,18 @@ services:
       context: ./services/telegram-read-service
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-telegram-read-service:latest
-    env_file: .env
     environment:
       PORT: 3002
+      JWT_SECRET: ${JWT_SECRET}
+      DB_SERVICE_URL: http://db-service:3006
     ports:
       - "3002:3002"
-      - "9229:9229"
     networks:
       - app-network
     restart: unless-stopped
+    depends_on:
+      auth-service:
+        condition: service_healthy
 
   # ── Telegram Download Service ────────────────────────────────────────────────
   telegram-download-service:
@@ -48,22 +102,18 @@ services:
       context: ./services/telegram-download-service
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-telegram-download-service:latest
-    env_file: .env
     environment:
       PORT: 3003
-      DOWNLOADS_DESKTOP: /host/Desktop
-      DOWNLOADS_DOWNLOADS: /host/Downloads
-      DOWNLOADS_CUSTOM: /host/Custom
+      JWT_SECRET: ${JWT_SECRET}
+      DB_SERVICE_URL: http://db-service:3006
     ports:
       - "3003:3003"
-      - "9231:9231"
-    volumes:
-      - ~/Desktop:/host/Desktop
-      - ~/Downloads:/host/Downloads
-      - ./downloads/Custom:/host/Custom
     networks:
       - app-network
     restart: unless-stopped
+    depends_on:
+      auth-service:
+        condition: service_healthy
 
   # ── Google Upload Service ────────────────────────────────────────────────────
   google-upload-service:
@@ -71,12 +121,10 @@ services:
       context: ./services/google-upload-service
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-google-upload-service:latest
-    env_file: .env
     environment:
       PORT: 3004
     ports:
       - "3004:3004"
-      - "9232:9232"
     networks:
       - app-network
     restart: unless-stopped
@@ -87,49 +135,46 @@ services:
       context: ./services/google-download-service
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-google-download-service:latest
-    env_file: .env
     environment:
       PORT: 3005
     ports:
       - "3005:3005"
-      - "9233:9233"
     networks:
       - app-network
     restart: unless-stopped
 
   # ── API Gateway ──────────────────────────────────────────────────────────────
-  # The only service exposed to the outside world on port 3000.
-  # It knows about the other services via their Docker network hostnames.
   api-gateway:
     build:
       context: ./services/api-gateway
       dockerfile: Dockerfile
     image: sauravmehta/content-scrapper-api-gateway:latest
-    env_file: .env
     environment:
       PORT: 3000
-      # Inside Docker network, services are reachable by their service name
       AUTH_SERVICE_URL: http://auth-service:3001
       READ_SERVICE_URL: http://telegram-read-service:3002
       DOWNLOAD_SERVICE_URL: http://telegram-download-service:3003
       GUPLOAD_SERVICE_URL: http://google-upload-service:3004
       GDOWNLOAD_SERVICE_URL: http://google-download-service:3005
+      DB_SERVICE_URL: http://db-service:3006
     ports:
       - "3000:3000"
-      - "9228:9228"
     depends_on:
-      - auth-service
-      - telegram-read-service
-      - telegram-download-service
-      - google-upload-service
-      - google-download-service
+      auth-service:
+        condition: service_healthy
+      telegram-read-service:
+        condition: service_started
+      telegram-download-service:
+        condition: service_started
+      google-upload-service:
+        condition: service_started
+      google-download-service:
+        condition: service_started
     networks:
       - app-network
     restart: unless-stopped
 
   # ── UI Service ───────────────────────────────────────────────────────────────
-  # Angular is compiled to static files; nginx serves them on port 80.
-  # Mapped to 4200 on your laptop so it feels like ng serve.
   ui-service:
     build:
       context: ./services/ui-service

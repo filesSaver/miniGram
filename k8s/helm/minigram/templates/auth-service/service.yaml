@@ -1,0 +1,21 @@
+# ── auth-service Service ──────────────────────────────────────────────────────
+#
+# ClusterIP — gives "auth-service:3001" as a stable internal DNS name.
+# Only the api-gateway calls this service (proxies /auth/* to it).
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  type: ClusterIP
+  selector:
+    app: auth-service
+  ports:
+    - name: http
+      port: {{ .Values.authService.port }}
+      targetPort: {{ .Values.authService.port }}

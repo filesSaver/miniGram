@@ -1,27 +1,66 @@
-require('dotenv').config();
 const express = require('express');
 const { TelegramClient, Api } = require('telegram');
 const { StringSession } = require('telegram/sessions');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const JWT_SECRET = process.env.JWT_SECRET;
+const DB_SERVICE_URL = process.env.DB_SERVICE_URL || 'http://db-service:3006';
+
+if (!JWT_SECRET) {
+  console.error('[telegram-read-service] FATAL: JWT_SECRET is not set');
+  process.exit(1);
+}
 
 app.use(express.json());
 
-const API_ID = Number.parseInt(process.env.API_ID);
-const API_HASH = process.env.API_HASH;
+async function getUserConfig(userId) {
+  const res = await fetch(`${DB_SERVICE_URL}/users/${userId}`);
+  if (!res.ok) throw Object.assign(new Error(`db-service fetch failed: ${res.status}`), { code: 503 });
+  return res.json();
+}
 
-let client = null;
-
-async function getClient() {
-  if (!client) {
-    client = new TelegramClient(new StringSession(process.env.SESSION_STRING || ''), API_ID, API_HASH, {
-      connectionRetries: 2,
-      useWSS: true,
-    });
-    await client.connect();
+async function getClientForUser(userId) {
+  const config = await getUserConfig(userId);
+  if (!config.api_id || !config.api_hash || !config.session_string) {
+    throw Object.assign(new Error('Telegram not configured or not logged in'), { code: 428 });
   }
+  const client = new TelegramClient(
+    new StringSession(config.session_string),
+    parseInt(config.api_id),
+    config.api_hash,
+    { connectionRetries: 2, useWSS: true }
+  );
+  await client.connect();
   return client;
+}
+
+function requireAuth(req, res, next) {
+  const header = req.headers['authorization'];
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Missing token' });
+  }
+  try {
+    const payload = jwt.verify(header.slice(7), JWT_SECRET);
+    req.userId = payload.sub;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+function requireAuthSSE(req, res, next) {
+  const header = req.headers['authorization'];
+  const token = (header && header.startsWith('Bearer ')) ? header.slice(7) : req.query.token;
+  if (!token) { res.status(401).end(); return; }
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.userId = payload.sub;
+    next();
+  } catch {
+    res.status(401).end();
+  }
 }
 
 function buildGroupInfo(e) {
@@ -29,14 +68,10 @@ function buildGroupInfo(e) {
     id: e.id.toString(),
     name: e.title,
     type: e instanceof Api.Channel && !e.megagroup ? 'channel' : 'group',
-    // Counts
     memberCount: e.participantsCount ?? null,
     adminCount: e.adminsCount ?? null,
-    // Dates
     createdAt: e.date ? new Date(e.date * 1000).toISOString() : null,
-    // Identity
     username: e.username || null,
-    // Flags
     scam: e.scam ?? false,
     fake: e.fake ?? false,
     restricted: e.restricted ?? false,
@@ -45,14 +80,12 @@ function buildGroupInfo(e) {
     megagroup: e.megagroup ?? false,
     gigagroup: e.gigagroup ?? false,
     forum: e.forum ?? false,
-    // Channel/group specific
     hasLink: e.hasLink ?? false,
     hasGeo: e.hasGeo ?? false,
     slowmodeEnabled: e.slowmodeEnabled ?? false,
     noforwards: e.noforwards ?? false,
     joinToSend: e.joinToSend ?? false,
     joinRequest: e.joinRequest ?? false,
-    // Description is fetched separately via full info
     about: null,
   };
 }
@@ -78,12 +111,48 @@ function getFileName(msg) {
   return a?.fileName || null;
 }
 
+function mapMessage(msg) {
+  return {
+    id: msg.id.toString(),
+    type: categorize(msg),
+    text: msg.message || '',
+    date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
+    fileName: getFileName(msg),
+    fileSize: msg.media?.document?.size ? Number(msg.media.document.size) : null,
+    mimeType: msg.media?.document?.mimeType || (msg.media?.className === 'MessageMediaPhoto' ? 'image/jpeg' : null),
+  };
+}
+
+// groupId → { items: ContentItem[], ts: number }
+const messageCache = new Map();
+// groupId → Promise (dedupe concurrent scan requests)
+const scanInProgress = new Map();
+
+async function getOrScanMessages(groupId, entity, client) {
+  if (messageCache.has(groupId)) return messageCache.get(groupId).items;
+  if (scanInProgress.has(groupId)) return scanInProgress.get(groupId);
+
+  const promise = (async () => {
+    const items = [];
+    for await (const msg of client.iterMessages(entity, { limit: undefined })) {
+      if (msg.message === undefined) continue;
+      items.push(mapMessage(msg));
+    }
+    messageCache.set(groupId, { items, ts: Date.now() });
+    scanInProgress.delete(groupId);
+    return items;
+  })();
+
+  scanInProgress.set(groupId, promise);
+  return promise;
+}
+
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'telegram-read-service' }));
 
-// ── Forum topics ──────────────────────────────────────────────────────────────
-app.get('/groups/:id/topics', async (req, res) => {
+app.get('/groups/:id/topics', requireAuth, async (req, res) => {
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -112,12 +181,13 @@ app.get('/groups/:id/topics', async (req, res) => {
 
     res.json({ topics });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-// SSE stream for a single topic inside a forum group
-app.get('/groups/:id/topics/:topicId/breakdown/stream', async (req, res) => {
+app.get('/groups/:id/topics/:topicId/breakdown/stream', requireAuthSSE, async (req, res) => {
   res.set({
     'Content-Type':  'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -129,8 +199,9 @@ app.get('/groups/:id/topics/:topicId/breakdown/stream', async (req, res) => {
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
   const cacheKey = `${req.params.id}:${req.params.topicId}`;
 
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -151,10 +222,7 @@ app.get('/groups/:id/topics/:topicId/breakdown/stream', async (req, res) => {
     const items = [];
     let processed = 0;
 
-    for await (const msg of c.iterMessages(dialog.entity, {
-      limit: undefined,
-      replyTo: topicId,
-    })) {
+    for await (const msg of c.iterMessages(dialog.entity, { limit: undefined, replyTo: topicId })) {
       if (msg.message === undefined) continue;
       const item = mapMessage(msg);
       items.push(item);
@@ -167,12 +235,14 @@ app.get('/groups/:id/topics/:topicId/breakdown/stream', async (req, res) => {
     send({ processed, total: processed, counts, done: true });
   } catch (err) {
     send({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
   res.end();
 });
 
-// Content for a specific topic (served from cache after stream)
-app.get('/groups/:id/topics/:topicId/content', async (req, res) => {
+app.get('/groups/:id/topics/:topicId/content', requireAuth, async (req, res) => {
+  let c;
   try {
     const cacheKey = `${req.params.id}:${req.params.topicId}`;
     if (messageCache.has(cacheKey)) {
@@ -182,7 +252,7 @@ app.get('/groups/:id/topics/:topicId/content', async (req, res) => {
       return res.json({ items: filtered, total: filtered.length });
     }
 
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -196,21 +266,24 @@ app.get('/groups/:id/topics/:topicId/content', async (req, res) => {
       if (msg.message === undefined) continue;
       items.push(mapMessage(msg));
     }
-    messageCache.set(cacheKey, { items, ts: Date.now() });
+    messageCache.set(`${req.params.id}:${topicId}`, { items, ts: Date.now() });
 
     const type = req.query.type || 'all';
     const filtered = type === 'all' ? items : items.filter(m => m.type === type);
     res.json({ items: filtered, total: filtered.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-app.get('/groups', async (req, res) => {
+app.get('/groups', requireAuth, async (req, res) => {
+  let c;
   try {
     const limit = Number.parseInt(req.query.limit) || 10;
     const offset = Number.parseInt(req.query.offset) || 0;
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
 
     const all = dialogs
@@ -229,13 +302,16 @@ app.get('/groups', async (req, res) => {
       limit,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-app.get('/groups/:id', async (req, res) => {
+app.get('/groups/:id', requireAuth, async (req, res) => {
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -244,7 +320,6 @@ app.get('/groups/:id', async (req, res) => {
     if (!dialog) return res.status(404).json({ error: 'Group not found' });
     const info = buildGroupInfo(dialog.entity);
 
-    // Try to fetch the 'about' description from full channel/chat info
     try {
       if (dialog.entity instanceof Api.Channel) {
         const full = await c.invoke(new Api.channels.GetFullChannel({ channel: dialog.entity }));
@@ -259,13 +334,16 @@ app.get('/groups/:id', async (req, res) => {
 
     res.json(info);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-app.get('/groups/:id/photo', async (req, res) => {
+app.get('/groups/:id/photo', requireAuthSSE, async (req, res) => {
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -278,62 +356,16 @@ app.get('/groups/:id/photo', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=86400');
     res.send(buffer);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-// ── Per-group message cache ───────────────────────────────────────────────────
-// groupId → { items: ContentItem[], ts: number }
-const messageCache = new Map();
-// groupId → Promise (dedupe concurrent scan requests)
-const scanInProgress = new Map();
-
-function mapMessage(msg) {
-  return {
-    id: msg.id.toString(),
-    type: categorize(msg),
-    text: msg.message || '',
-    date: msg.date ? new Date(msg.date * 1000).toISOString() : null,
-    fileName: getFileName(msg),
-    fileSize: msg.media?.document?.size ? Number(msg.media.document.size) : null,
-    mimeType: msg.media?.document?.mimeType || (msg.media?.className === 'MessageMediaPhoto' ? 'image/jpeg' : null),
-  };
-}
-
-// Returns cached items or runs a full scan, deduplicating concurrent calls
-async function getOrScanMessages(groupId, entity, client) {
-  if (messageCache.has(groupId)) return messageCache.get(groupId).items;
-
-  if (scanInProgress.has(groupId)) return scanInProgress.get(groupId);
-
-  const promise = (async () => {
-    const items = [];
-    for await (const msg of client.iterMessages(entity, { limit: undefined })) {
-      if (msg.message === undefined) continue;
-      items.push(mapMessage(msg));
-    }
-    messageCache.set(groupId, { items, ts: Date.now() });
-    scanInProgress.delete(groupId);
-    return items;
-  })();
-
-  scanInProgress.set(groupId, promise);
-  return promise;
-}
-
-// Fetches every message from a dialog by paginating with iterMessages
-async function getAllMessages(client, entity) {
-  const messages = [];
-  for await (const msg of client.iterMessages(entity, { limit: undefined })) {
-    messages.push(msg);
-  }
-  return messages;
-}
-
-// Returns per-type message counts for a group (used by the All tab)
-app.get('/groups/:id/stats', async (req, res) => {
+app.get('/groups/:id/stats', requireAuth, async (req, res) => {
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -341,7 +373,6 @@ app.get('/groups/:id/stats', async (req, res) => {
     );
     if (!dialog) return res.status(404).json({ error: 'Group not found' });
 
-    // Single API call — Telegram returns total count in history metadata
     const result = await c.invoke(new Api.messages.GetHistory({
       peer: dialog.entity,
       limit: 1,
@@ -356,12 +387,13 @@ app.get('/groups/:id/stats', async (req, res) => {
     const total = result.count ?? result.messages?.length ?? 0;
     res.json({ total });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-// SSE stream — emits progress as messages are scanned, then final counts
-app.get('/groups/:id/breakdown/stream', async (req, res) => {
+app.get('/groups/:id/breakdown/stream', requireAuthSSE, async (req, res) => {
   res.set({
     'Content-Type':  'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -371,9 +403,10 @@ app.get('/groups/:id/breakdown/stream', async (req, res) => {
   res.flushHeaders();
 
   const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+  let c;
 
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -381,7 +414,6 @@ app.get('/groups/:id/breakdown/stream', async (req, res) => {
     );
     if (!dialog) { send({ error: 'Group not found' }); return res.end(); }
 
-    // If already cached, emit done immediately
     if (messageCache.has(req.params.id)) {
       const cached = messageCache.get(req.params.id).items;
       const counts = { video: 0, audio: 0, image: 0, pdf: 0, chat: 0, other: 0 };
@@ -390,7 +422,6 @@ app.get('/groups/:id/breakdown/stream', async (req, res) => {
       return res.end();
     }
 
-    // Get total first so we can show %
     const histResult = await c.invoke(new Api.messages.GetHistory({
       peer: dialog.entity, limit: 1,
       offsetId: 0, offsetDate: 0, addOffset: 0, maxId: 0, minId: 0, hash: BigInt(0),
@@ -407,7 +438,6 @@ app.get('/groups/:id/breakdown/stream', async (req, res) => {
       items.push(item);
       counts[item.type] = (counts[item.type] || 0) + 1;
       processed++;
-      // Emit progress every 100 messages
       if (processed % 100 === 0) {
         send({ processed, total, counts, done: false });
       }
@@ -418,15 +448,16 @@ app.get('/groups/:id/breakdown/stream', async (req, res) => {
     send({ processed, total: processed, counts, done: true });
   } catch (err) {
     send({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
   res.end();
 });
 
-// Slow endpoint — scans every message to produce per-type breakdown.
-// Result is cached so /content tabs are instant afterwards.
-app.get('/groups/:id/breakdown', async (req, res) => {
+app.get('/groups/:id/breakdown', requireAuth, async (req, res) => {
+  let c;
   try {
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -439,12 +470,14 @@ app.get('/groups/:id/breakdown', async (req, res) => {
     for (const item of items) counts[item.type] = (counts[item.type] || 0) + 1;
     res.json(counts);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-// Range fetch — returns items whose message ID is between from and to (inclusive)
-app.get('/groups/:id/content/range', async (req, res) => {
+app.get('/groups/:id/content/range', requireAuth, async (req, res) => {
+  let c;
   try {
     const fromId = Number.parseInt(req.query.from);
     const toId   = Number.parseInt(req.query.to);
@@ -452,7 +485,7 @@ app.get('/groups/:id/content/range', async (req, res) => {
       return res.status(400).json({ error: 'Invalid range: provide from and to as integers with from <= to' });
     }
 
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -461,7 +494,6 @@ app.get('/groups/:id/content/range', async (req, res) => {
     if (!dialog) return res.status(404).json({ error: 'Group not found' });
 
     const items = [];
-    // iterMessages with minId/maxId fetches only within the range efficiently
     for await (const msg of c.iterMessages(dialog.entity, {
       minId: fromId - 1,
       maxId: toId + 1,
@@ -473,12 +505,14 @@ app.get('/groups/:id/content/range', async (req, res) => {
 
     res.json({ items, total: items.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-// Topic range fetch
-app.get('/groups/:id/topics/:topicId/content/range', async (req, res) => {
+app.get('/groups/:id/topics/:topicId/content/range', requireAuth, async (req, res) => {
+  let c;
   try {
     const fromId = Number.parseInt(req.query.from);
     const toId   = Number.parseInt(req.query.to);
@@ -486,7 +520,7 @@ app.get('/groups/:id/topics/:topicId/content/range', async (req, res) => {
       return res.status(400).json({ error: 'Invalid range: provide from and to as integers with from <= to' });
     }
 
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
     const dialog = dialogs.find(
       d => (d.entity instanceof Api.Chat || d.entity instanceof Api.Channel) &&
@@ -508,16 +542,19 @@ app.get('/groups/:id/topics/:topicId/content/range', async (req, res) => {
 
     res.json({ items, total: items.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 
-app.get('/groups/:id/content', async (req, res) => {
+app.get('/groups/:id/content', requireAuth, async (req, res) => {
+  let c;
   try {
     const type = req.query.type || 'all';
     const limit = Number.parseInt(req.query.limit) || 10;
     const offset = Number.parseInt(req.query.offset) || 0;
-    const c = await getClient();
+    c = await getClientForUser(req.userId);
     const dialogs = await c.getDialogs({});
 
     const dialog = dialogs.find(
@@ -530,7 +567,9 @@ app.get('/groups/:id/content', async (req, res) => {
     const filtered = type === 'all' ? all : all.filter(m => m.type === type);
     res.json({ items: filtered.slice(offset, offset + limit), total: filtered.length, offset, limit });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.code || 500).json({ error: err.message });
+  } finally {
+    c?.disconnect().catch(() => {});
   }
 });
 

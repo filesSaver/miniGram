@@ -2,18 +2,13 @@ import { Component, OnInit, OnDestroy, input, signal, computed } from '@angular/
 import { Router, RouterLink } from '@angular/router';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import {
-  AuthService, ContentItem, DownloadJob, DownloadLog,
-  DownloadLogEntry, ItemDownloadStatus, ItemProgress, GroupBreakdown,
+  AuthService, ContentItem, DownloadEntry, GroupBreakdown,
 } from '../services/auth.service';
 
 type Tab = 'all' | 'videos' | 'images' | 'pdfs' | 'chat' | 'other' | 'range';
 const TAB_TYPE_MAP: Record<Exclude<Tab, 'range'>, string> = {
   all: 'all', videos: 'video', images: 'image', pdfs: 'pdf', chat: 'chat', other: 'other',
 };
-export interface DestOption { key: string; label: string; path: string; }
-function sanitizeFolderName(name: string): string {
-  return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim() || 'download';
-}
 
 @Component({
   selector: 'app-topic-detail',
@@ -32,11 +27,21 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
   loading      = signal(false);
   selectedIds  = signal<Set<string>>(new Set());
 
-  breakdown       = signal<GroupBreakdown | null>(null);
+  breakdown        = signal<GroupBreakdown | null>(null);
   loadingBreakdown = signal(false);
-  scanProgress    = signal<{ processed: number; total: number | null } | null>(null);
+  scanProgress     = signal<{ processed: number; total: number | null } | null>(null);
   private allItemsCache = signal<ContentItem[] | null>(null);
   private sseSource: EventSource | null = null;
+
+  // Download tracking
+  downloadedIds = signal<Set<string>>(new Set());
+  pendingIds    = signal<Set<string>>(new Set());
+  private pendingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private downloadQueue: ContentItem[] = [];
+  private queueRunning = false;
+
+  downloadCount = computed(() => this.downloadedIds().size);
+  menuOpen = signal(false);
 
   contentSearch = signal('');
   filteredItems = computed(() => {
@@ -49,18 +54,6 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
     );
   });
 
-  showLocationPicker = signal(false);
-  destOptions        = signal<DestOption[]>([]);
-  selectedDest       = signal<string>('downloads');
-  downloading        = signal(false);
-  downloadResult     = signal<string>('');
-  downloadProgress   = signal<{ done: number; total: number } | null>(null);
-  itemStatuses       = signal<Record<string, ItemDownloadStatus>>({});
-  itemProgresses     = signal<Record<string, ItemProgress>>({});
-  downloadLog        = signal<DownloadLog>({});
-
-  private readonly pollTimer: { ref: ReturnType<typeof setTimeout> | null } = { ref: null };
-
   readonly tabs: { key: Tab; label: string }[] = [
     { key: 'all', label: 'All' }, { key: 'videos', label: 'Videos' },
     { key: 'images', label: 'Images' }, { key: 'pdfs', label: 'PDFs' },
@@ -68,7 +61,6 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
     { key: 'range', label: '🎯 Range' },
   ];
 
-  // Range tab state
   rangeFrom    = signal<number | null>(null);
   rangeTo      = signal<number | null>(null);
   rangeItems   = signal<ContentItem[]>([]);
@@ -86,6 +78,30 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
   });
   selectedCount = computed(() => this.selectedIds().size);
 
+  totalSelectedSize = computed(() => {
+    const ids = this.selectedIds();
+    const pool = [
+      ...this.filteredItems(),
+      ...this.rangeItems(),
+      ...(this.allItemsCache() ?? []),
+    ];
+    const seen = new Set<string>();
+    const deduped = pool.filter(i => { const k = String(i.id); if (seen.has(k)) return false; seen.add(k); return true; });
+    return deduped.filter(i => ids.has(String(i.id))).reduce((sum, i) => sum + (i.fileSize ?? 0), 0);
+  });
+
+  totalSelectedSizePartial = computed(() => {
+    const ids = this.selectedIds();
+    const pool = [
+      ...this.filteredItems(),
+      ...this.rangeItems(),
+      ...(this.allItemsCache() ?? []),
+    ];
+    const seen = new Set<string>();
+    const deduped = pool.filter(i => { const k = String(i.id); if (seen.has(k)) return false; seen.add(k); return true; });
+    return deduped.filter(i => ids.has(String(i.id))).some(i => !i.fileSize);
+  });
+
   constructor(private authService: AuthService, private router: Router) {}
 
   ngOnInit() {
@@ -93,9 +109,16 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
     const tid = Number(this.topicId());
     const cacheKey = `${gid}:${tid}`;
 
+    this.authService.getGroupDownloadLog(gid).subscribe({
+      next: (entries: DownloadEntry[]) => {
+        this.downloadedIds.set(new Set(entries.map(e => String(e.message_id))));
+      },
+      error: () => {},
+    });
+
     this.authService.getGroup(gid).subscribe({
-      next: (g) => { this.groupName.set(g.name); this.loadDownloadLog(); },
-      error: () => { this.groupName.set(gid); this.loadDownloadLog(); },
+      next: (g) => this.groupName.set(g.name),
+      error: () => this.groupName.set(gid),
     });
 
     this.authService.getTopics(gid).subscribe({
@@ -106,17 +129,6 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
       error: () => {},
     });
 
-    this.authService.getDownloadLocations().subscribe({
-      next: (locs) => {
-        this.destOptions.set([
-          { key: 'desktop',   label: 'Desktop',      path: locs.desktop   },
-          { key: 'downloads', label: 'Downloads',     path: locs.downloads },
-          { key: 'custom',    label: 'Custom folder', path: locs.custom    },
-        ]);
-      },
-    });
-
-    // If items are already cached, restore instantly — no scan needed
     if (this.authService.hasItemsCache(cacheKey)) {
       const bd = this.authService.getTopicBreakdownCache(cacheKey);
       if (bd) this.breakdown.set(bd);
@@ -129,7 +141,6 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // First visit — run SSE scan
     this.loadingBreakdown.set(true);
     this.sseSource = this.authService.streamTopicBreakdown(gid, tid);
     this.sseSource.onmessage = (event) => {
@@ -152,14 +163,6 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
       }
     };
     this.sseSource.onerror = () => { this.loadingBreakdown.set(false); this.sseSource?.close(); };
-  }
-
-  private loadDownloadLog() {
-    const folder = sanitizeFolderName(this.groupName() || this.groupId());
-    this.authService.getDownloadLog(this.selectedDest(), folder).subscribe({
-      next: (log) => this.downloadLog.set(log),
-      error: () => {},
-    });
   }
 
   setTab(tab: Tab) {
@@ -213,92 +216,119 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
   }
 
   selectAllRange() {
-    const selectable = this.rangeItems()
-      .filter(i => this.logStatus(i.id) !== 'done')
-      .map(i => String(i.id));
-    this.selectedIds.set(new Set(selectable));
+    this.selectedIds.set(new Set(this.rangeItems().map(i => String(i.id))));
   }
 
   isSelected(id: string | number): boolean { return this.selectedIds().has(String(id)); }
+  isDownloaded(id: string | number): boolean { return this.downloadedIds().has(String(id)); }
+  isPending(id: string | number): boolean { return this.pendingIds().has(String(id)); }
+
   toggleItem(id: string | number) {
     const key = String(id); const set = new Set(this.selectedIds());
     if (set.has(key)) set.delete(key); else set.add(key);
     this.selectedIds.set(set);
   }
+
   toggleAll() {
     if (this.allSelected()) { this.selectedIds.set(new Set()); return; }
-    const selectable = this.filteredItems().filter(i => this.logStatus(i.id) !== 'done').map(i => String(i.id));
-    this.selectedIds.set(new Set(selectable));
+    this.selectedIds.set(new Set(this.filteredItems().map(i => String(i.id))));
   }
 
-  logEntry(id: string | number): DownloadLogEntry | null { return this.downloadLog()[String(id)] ?? null; }
-  logStatus(id: string | number): string { return this.downloadLog()[String(id)]?.status ?? 'not-downloaded'; }
-  itemStatus(id: string | number): ItemDownloadStatus { return this.itemStatuses()[String(id)] ?? 'idle'; }
-  itemProgress(id: string | number): ItemProgress { return this.itemProgresses()[String(id)] ?? { pct: 0, downloaded: 0, total: 0 }; }
-  displayStatus(id: string | number): string {
-    const live = this.itemStatuses()[String(id)];
-    if (live && live !== 'idle') return live;
-    return this.logStatus(id);
-  }
+  private triggerDownload(item: ContentItem): Promise<void> {
+    const id = String(item.id);
+    const fileName = item.fileName || `file_${item.id}`;
 
-  openLocationPicker() { this.showLocationPicker.set(true); }
-  cancelLocationPicker() { this.showLocationPicker.set(false); }
-  selectDest(key: string) { this.selectedDest.set(key); this.loadDownloadLog(); }
-  confirmDownload() { this.showLocationPicker.set(false); this.startDownload(); }
+    const pending = new Set(this.pendingIds());
+    pending.add(id);
+    this.pendingIds.set(pending);
 
-  private startDownload() {
-    const ids = Array.from(this.selectedIds());
-    if (ids.length === 0) return;
-    const statuses: Record<string, ItemDownloadStatus> = {};
-    const progresses: Record<string, ItemProgress> = {};
-    ids.forEach(id => { statuses[id] = 'queued'; progresses[id] = { pct: 0, downloaded: 0, total: 0 }; });
-    this.itemStatuses.set(statuses); this.itemProgresses.set(progresses);
-    this.downloading.set(true); this.downloadResult.set('');
-    this.downloadProgress.set({ done: 0, total: ids.length });
-    this.selectedIds.set(new Set());
-    const folderName = `${this.groupName()} - ${this.topicTitle()}`;
-    this.authService.downloadBatch(this.groupId(), folderName, ids, this.selectedDest()).subscribe({
-      next: (res) => this.pollJobStatus(res.jobId, res.total),
-      error: (err) => {
-        this.downloading.set(false); this.downloadProgress.set(null);
-        this.downloadResult.set(`Error: ${err.error?.error || 'Download failed'}`);
-        const s = { ...this.itemStatuses() }; ids.forEach(id => s[id] = 'error'); this.itemStatuses.set(s);
-      },
+    this.authService.downloadFile(this.groupId(), item.id, fileName);
+
+    return new Promise<void>((resolve) => {
+      const poll = () => {
+        this.authService.getGroupDownloadLog(this.groupId()).subscribe({
+          next: (entries) => {
+            const done = entries.some(e => String(e.message_id) === id);
+            if (done) {
+              const p = new Set(this.pendingIds()); p.delete(id); this.pendingIds.set(p);
+              this.pendingTimers.delete(id);
+              const d = new Set(this.downloadedIds()); d.add(id); this.downloadedIds.set(d);
+              resolve();
+            } else {
+              const t = setTimeout(poll, 5000);
+              this.pendingTimers.set(id, t);
+            }
+          },
+          error: () => { const t = setTimeout(poll, 5000); this.pendingTimers.set(id, t); },
+        });
+      };
+      const existing = this.pendingTimers.get(id);
+      if (existing) clearTimeout(existing);
+      this.pendingTimers.set(id, setTimeout(poll, 5000));
     });
   }
 
-  retryItem(id: string) {
-    const s = { ...this.itemStatuses() }; s[id] = 'idle'; this.itemStatuses.set(s);
-    this.selectedIds.set(new Set([id])); this.openLocationPicker();
-  }
-  openFile(filePath: string) { this.authService.openPath(filePath).subscribe({ error: () => {} }); }
-  openFolder(filePath: string) {
-    this.authService.openPath(filePath.substring(0, filePath.lastIndexOf('/'))).subscribe({ error: () => {} });
-  }
-
-  private pollJobStatus(jobId: string, total: number) {
-    this.pollTimer.ref = setTimeout(() => {
-      this.authService.getDownloadStatus(jobId).subscribe({
-        next: (job: DownloadJob) => {
-          const statuses = { ...this.itemStatuses() }; const progresses = { ...this.itemProgresses() };
-          for (const [msgId, s] of Object.entries(job.itemStatus)) statuses[msgId] = s as ItemDownloadStatus;
-          for (const [msgId, p] of Object.entries(job.itemProgress)) progresses[msgId] = p;
-          this.itemStatuses.set(statuses); this.itemProgresses.set(progresses);
-          this.downloadProgress.set({ done: job.done, total });
-          if (job.status === 'running') { this.pollJobStatus(jobId, total); return; }
-          this.downloading.set(false); this.downloadProgress.set(null);
-          if (job.status === 'done') {
-            const destLabel = this.destOptions().find(d => d.key === this.selectedDest())?.label || 'folder';
-            this.downloadResult.set(`Downloaded ${job.downloaded}/${total} files to your ${destLabel}`);
-            this.loadDownloadLog();
-          } else { this.downloadResult.set(`Error: ${job.error || 'Download failed'}`); }
-        },
-        error: () => this.pollJobStatus(jobId, total),
-      });
-    }, 1500);
+  private async runQueue() {
+    if (this.queueRunning) return;
+    this.queueRunning = true;
+    while (this.downloadQueue.length > 0) {
+      const item = this.downloadQueue.shift()!;
+      await this.triggerDownload(item);
+    }
+    this.queueRunning = false;
   }
 
-  ngOnDestroy() { if (this.pollTimer.ref) clearTimeout(this.pollTimer.ref); this.sseSource?.close(); }
+  downloadItem(item: ContentItem) {
+    const id = String(item.id);
+    if (this.isDownloaded(id)) {
+      const name = item.fileName || `file_${item.id}`;
+      if (!confirm(`"${name}" has already been downloaded.\n\nDownload again?`)) return;
+    }
+    if (!this.isPending(id)) {
+      this.downloadQueue.push(item);
+      this.runQueue();
+    }
+  }
+
+  downloadSelected() {
+    const ids = Array.from(this.selectedIds());
+    const allItems = [...this.items(), ...this.rangeItems()];
+    const alreadyDone = ids.filter(id => this.isDownloaded(id));
+
+    const proceed = () => {
+      const pending = new Set(this.pendingIds());
+      for (const id of ids) pending.add(id);
+      this.pendingIds.set(pending);
+
+      for (const id of ids) {
+        const item = allItems.find(it => String(it.id) === id);
+        if (item && !this.downloadQueue.some(q => String(q.id) === id)) {
+          this.downloadQueue.push(item);
+        }
+      }
+      this.selectedIds.set(new Set());
+      this.runQueue();
+    };
+
+    if (alreadyDone.length > 0) {
+      const msg = alreadyDone.length === ids.length
+        ? `All ${ids.length} selected files have already been downloaded.\n\nDownload again?`
+        : `${alreadyDone.length} of ${ids.length} files have already been downloaded.\n\nDownload all again?`;
+      if (!confirm(msg)) return;
+    }
+    proceed();
+  }
+
+  ngOnDestroy() {
+    this.sseSource?.close();
+    this.pendingTimers.forEach(t => clearTimeout(t));
+  }
+
+  logout() {
+    this.authService.logout();
+    this.router.navigate(['/']);
+    window.location.reload();
+  }
 
   breakdownCount(key: string): number {
     const bd = this.breakdown();
@@ -310,9 +340,11 @@ export class TopicDetailComponent implements OnInit, OnDestroy {
   }
   formatSize(bytes: number | null): string {
     if (!bytes) return '';
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+    if (bytes < 1024 ** 4) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+    return `${(bytes / 1024 ** 4).toFixed(1)} TB`;
   }
-
   strId(id: string | number): string { return String(id); }
 }

@@ -27,6 +27,5 @@ COPY --from=builder /app/server.js ./
 
 # Document which port this service listens on (informational, not binding)
 EXPOSE 3001
-EXPOSE 9230
 USER node
-CMD ["node", "--inspect=0.0.0.0:9230", "server.js"]
+CMD ["node", "server.js"]

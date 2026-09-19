@@ -1,0 +1,79 @@
+# ── db-service Deployment ─────────────────────────────────────────────────────
+#
+# WHY: db-service is a thin Node.js REST API that wraps PostgreSQL.
+# All other services (auth, telegram-read, telegram-download) call THIS service
+# instead of connecting to Postgres directly. This keeps DB credentials in one
+# place and gives a clean HTTP interface to the database.
+#
+# initContainers: Before db-service starts, we run a small "wait" container
+# that polls postgres:5432 until it accepts TCP connections. This prevents
+# the Node.js app from crashing on startup due to Postgres not being ready yet.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: db-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-service
+spec:
+  replicas: {{ .Values.dbService.replicas }}
+  selector:
+    matchLabels:
+      app: db-service
+  template:
+    metadata:
+      labels:
+        app: db-service
+    spec:
+      # Wait for Postgres to be ready before starting the Node.js app.
+      # busybox nc (netcat) checks if port 5432 is open every 2 seconds.
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for postgres:5432..."
+              until nc -z postgres {{ .Values.postgres.port }}; do
+                sleep 2
+              done
+              echo "Postgres is ready."
+
+      containers:
+        - name: db-service
+          image: {{ .Values.dbService.image }}
+          ports:
+            - containerPort: {{ .Values.dbService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.dbService.port }}"
+            # Full Postgres connection string from the Secret
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: DATABASE_URL
+          # Readiness: only route traffic to this pod once /health returns 200
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.dbService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          # Liveness: restart the pod if /health stops returning 200
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.dbService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

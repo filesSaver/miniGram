@@ -28,7 +28,19 @@ jobs:
 
       - name: Build all service images
         run: docker compose build
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Push all service images
         if: github.event_name == 'push'
         run: docker compose push
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

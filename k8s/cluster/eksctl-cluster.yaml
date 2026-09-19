@@ -1,0 +1,59 @@
+# ── EKS Cluster Definition ────────────────────────────────────────────────────
+#
+# This file tells eksctl what cluster to create on AWS.
+#
+# WHAT IT DOES:
+#   - Creates an EKS cluster named "minigram" in ap-south-1 (Mumbai)
+#   - Provisions 2 EC2 worker nodes (t3.medium) that can autoscale up to 3
+#   - Enables OIDC — required so the AWS Load Balancer Controller can get
+#     AWS permissions via IAM roles (without storing AWS keys in the cluster)
+#   - Installs the EBS CSI driver add-on — required so Kubernetes can
+#     create/attach EBS volumes for the PostgreSQL persistent volume
+#
+# HOW TO USE:
+#   eksctl create cluster -f k8s/cluster/eksctl-cluster.yaml
+#
+# COST ESTIMATE (ap-south-1):
+#   2x t3.medium ≈ $0.0416/hr each ≈ ~$60/month for both nodes
+# ─────────────────────────────────────────────────────────────────────────────
+
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: minigram
+  region: us-east-1
+  version: "1.30"
+
+# OIDC enables IAM Roles for Service Accounts (IRSA).
+# The AWS Load Balancer Controller needs this to call AWS APIs.
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: minigram-nodes
+    instanceType: t3.medium
+    minSize: 1
+    desiredCapacity: 2
+    maxSize: 3
+    # Nodes run in private subnets; only the ALB is public-facing
+    privateNetworking: true
+    labels:
+      app: minigram
+    tags:
+      Project: minigram
+      ManagedBy: eksctl
+
+# Add-ons installed by AWS (managed, auto-updated)
+addons:
+  # EBS CSI Driver: lets Kubernetes provision EBS volumes for PersistentVolumeClaims.
+  # PostgreSQL StatefulSet uses this to get persistent disk storage.
+  - name: aws-ebs-csi-driver
+    wellKnownPolicies:
+      ebsCSIController: true
+  # CoreDNS: internal DNS so services can reach each other by name
+  - name: coredns
+  # kube-proxy: handles internal cluster networking
+  - name: kube-proxy
+  # VPC CNI: assigns real VPC IPs to pods (required for ALB target-type: ip)
+  - name: vpc-cni

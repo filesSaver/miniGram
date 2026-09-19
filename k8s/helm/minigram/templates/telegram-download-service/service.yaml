@@ -1,0 +1,21 @@
+# ── telegram-download-service Service ────────────────────────────────────────
+#
+# ClusterIP — "telegram-download-service:3003" internally.
+# api-gateway proxies /download/* to this service with no timeout.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: telegram-download-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telegram-download-service
+spec:
+  type: ClusterIP
+  selector:
+    app: telegram-download-service
+  ports:
+    - name: http
+      port: {{ .Values.telegramDownloadService.port }}
+      targetPort: {{ .Values.telegramDownloadService.port }}

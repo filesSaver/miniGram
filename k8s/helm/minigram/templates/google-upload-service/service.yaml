@@ -1,0 +1,20 @@
+# ── google-upload-service Service ────────────────────────────────────────────
+# ClusterIP — "google-upload-service:3004" internally.
+# api-gateway proxies /google/upload/* here.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: google-upload-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: google-upload-service
+spec:
+  type: ClusterIP
+  selector:
+    app: google-upload-service
+  ports:
+    - name: http
+      port: {{ .Values.googleUploadService.port }}
+      targetPort: {{ .Values.googleUploadService.port }}

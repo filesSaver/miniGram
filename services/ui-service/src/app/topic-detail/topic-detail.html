@@ -1,31 +1,40 @@
 <div class="app-layout">
 
-  <header class="topbar">
-    <a [routerLink]="['/group', groupId()]" class="back-btn">← Back</a>
-    <h1>{{ topicTitle() || 'Topic' }}</h1>
-    <span class="group-sub">{{ groupName() }}</span>
-
-    @if (selectedCount() > 0) {
-      <span class="selection-badge">{{ selectedCount() }} selected</span>
-      <button class="download-btn" [disabled]="downloading()" (click)="openLocationPicker()">⬇ Download</button>
-    }
-    @if (downloading() && downloadProgress()) {
-      <div class="topbar-progress">
-        <span class="mini-spinner"></span>
-        <span>{{ downloadProgress()!.done }}/{{ downloadProgress()!.total }}</span>
-        <div class="topbar-bar">
-          <div class="topbar-bar-fill" [style.width.%]="(downloadProgress()!.done / downloadProgress()!.total) * 100"></div>
-        </div>
-      </div>
-    }
-  </header>
-
-  @if (downloadResult()) {
-    <div class="download-result" [class.error]="downloadResult().startsWith('Error')">
-      {{ downloadResult() }}
-      <button class="dismiss-btn" (click)="downloadResult.set('')">✕</button>
+  <!-- ── Top nav ── -->
+  <header class="home-nav">
+    <div class="nav-left">
+      <a [routerLink]="['/group', groupId()]" class="nav-back">←</a>
+      <span class="nav-brand">
+        <span class="nb-mini">Mini</span><span class="nb-gram">Gram</span><span class="nb-dot">.</span><span class="nb-load">load</span>
+      </span>
+      <span class="nav-page-title">{{ topicTitle() || 'Topic' }}</span>
     </div>
-  }
+
+    <!-- Desktop actions -->
+    <div class="nav-actions">
+      <a class="bmc-btn" href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer">
+        <img src="/bmc-logo.png" alt="Buy me a coffee" class="bmc-logo" />
+      </a>
+      <button class="logout-btn" (click)="logout()" title="Sign out">⏻ Logout</button>
+    </div>
+
+    <!-- Mobile hamburger + dropdown -->
+    <div class="hamburger-wrap">
+      <button class="hamburger-btn" (click)="menuOpen.set(!menuOpen())" aria-label="Menu">
+        <span class="bar"></span>
+        <span class="bar"></span>
+        <span class="bar"></span>
+      </button>
+      @if (menuOpen()) {
+        <div class="mobile-menu">
+          <a class="mobile-menu-bmc" href="https://www.buymeacoffee.com" target="_blank" rel="noopener noreferrer" (click)="menuOpen.set(false)">
+            <img src="/bmc-logo.png" alt="Buy me a coffee" class="bmc-logo" />
+          </a>
+          <button class="mobile-menu-logout" (click)="logout()">⏻ Logout</button>
+        </div>
+      }
+    </div>
+  </header>
 
   <!-- Stats + scan progress -->
   <div class="stats-overview content-pad">
@@ -75,7 +84,6 @@
       <p class="checking">Select a tab above to browse content in this topic.</p>
     } @else if (activeTab() === 'range') {
 
-      <!-- ── Range picker ── -->
       <div class="range-panel">
         <div class="range-inputs">
           <div class="range-field">
@@ -97,14 +105,10 @@
           </button>
         </div>
 
-        @if (rangeError()) {
-          <p class="range-error">{{ rangeError() }}</p>
-        }
+        @if (rangeError()) { <p class="range-error">{{ rangeError() }}</p> }
 
         @if (rangeLoading()) {
-          <div class="tab-loading">
-            <span class="tab-spinner"></span><span>Fetching messages in range…</span>
-          </div>
+          <div class="tab-loading"><span class="tab-spinner"></span><span>Fetching messages in range…</span></div>
         } @else if (rangeFetched()) {
           @if (rangeItems().length === 0) {
             <p class="checking">No downloadable items found in that range.</p>
@@ -114,7 +118,7 @@
                 <input type="checkbox"
                        [checked]="selectedIds().size > 0 && rangeItems().every(i => selectedIds().has(strId(i.id)))"
                        (change)="selectAllRange()" />
-                <span>Select all not yet downloaded ({{ rangeItems().length }} items found)</span>
+                <span>Select all ({{ rangeItems().length }} items found)</span>
               </label>
               @if (selectedCount() > 0) {
                 <span class="range-selected-hint">{{ selectedCount() }} selected — click ⬇ Download in the toolbar</span>
@@ -123,25 +127,11 @@
 
             <div class="item-list">
               @for (item of rangeItems(); track item.id) {
-                @let ds = displayStatus(item.id);
-                @let prog = itemProgress(item.id);
-                @let entry = logEntry(item.id);
-
-                <div class="item-row"
-                     [class.selected]="isSelected(item.id)"
-                     [class.s-queued]="ds === 'queued'"
-                     [class.s-downloading]="ds === 'downloading'"
-                     [class.s-done]="ds === 'done'"
-                     [class.s-error]="ds === 'error'"
-                     (click)="ds === 'idle' || ds === 'not-downloaded' ? toggleItem(item.id) : null">
-
+                <div class="item-row" [class.selected]="isSelected(item.id)" (click)="toggleItem(item.id)">
                   <input type="checkbox" class="item-checkbox"
                          [checked]="isSelected(item.id)"
-                         [disabled]="ds !== 'idle' && ds !== 'not-downloaded'"
                          (click)="$event.stopPropagation()" (change)="toggleItem(item.id)" />
-
                   <span class="item-icon">{{ typeIcon(item.type) }}</span>
-
                   <div class="item-info">
                     <span class="item-name">{{ item.fileName || item.text || '(no text)' }}</span>
                     <span class="item-meta">
@@ -149,33 +139,16 @@
                       @if (item.fileSize) { · {{ formatSize(item.fileSize) }} }
                       @if (item.date) { · {{ item.date | date:'mediumDate' }} }
                     </span>
-                    @if (ds === 'downloading') {
-                      <div class="progress-bar-wrap">
-                        <div class="progress-bar-track"><div class="progress-bar-fill" [style.width.%]="prog.pct"></div></div>
-                        <span class="progress-label">{{ prog.pct }}% @if (prog.total > 0) { · {{ formatSize(prog.downloaded) }} / {{ formatSize(prog.total) }} }</span>
-                      </div>
-                    }
-                    @if (ds === 'queued') { <span class="queue-label">In queue…</span> }
                   </div>
-
                   <span class="item-badge" [class]="item.type">{{ item.type }}</span>
-
                   <div class="item-actions">
-                    @switch (ds) {
-                      @case ('downloading') { <span class="status-icon spinning"><span class="mini-spinner dark"></span></span> }
-                      @case ('queued')      { <span class="status-icon queued" title="Queued">⏳</span> }
-                      @case ('done') {
-                        <span class="status-icon done">✓</span>
-                        @if (entry?.filePath) {
-                          <button class="open-btn" (click)="$event.stopPropagation(); openFile(entry!.filePath!)">▶</button>
-                          <button class="open-btn folder" (click)="$event.stopPropagation(); openFolder(entry!.filePath!)">📂</button>
-                        }
-                      }
-                      @case ('error') {
-                        <span class="status-icon error">✕</span>
-                        <button class="retry-btn" (click)="$event.stopPropagation(); retryItem(strId(item.id))">↺</button>
-                      }
-                      @case ('skipped') { <span class="status-icon skipped">—</span> }
+                    @if (isPending(item.id)) {
+                      <span class="status-icon pending" title="Downloading — do not close this tab"><span class="mini-spinner dark"></span> Downloading…</span>
+                    } @else if (isDownloaded(item.id)) {
+                      <span class="status-icon done" title="Downloaded">✓</span>
+                      <button class="open-btn downloaded" title="Download again" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
+                    } @else {
+                      <button class="open-btn" title="Download" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
                     }
                   </div>
                 </div>
@@ -207,64 +180,33 @@
       <div class="select-all-row">
         <label class="checkbox-label">
           <input type="checkbox" [checked]="allSelected()" [indeterminate]="someSelected()" (change)="toggleAll()" />
-          <span>Select all not yet downloaded ({{ filteredItems().length }})</span>
+          <span>Select all ({{ filteredItems().length }})</span>
         </label>
       </div>
 
       <div class="item-list">
         @for (item of filteredItems(); track item.id) {
-          @let ds = displayStatus(item.id);
-          @let prog = itemProgress(item.id);
-          @let entry = logEntry(item.id);
-
-          <div class="item-row"
-               [class.selected]="isSelected(item.id)"
-               [class.s-queued]="ds === 'queued'"
-               [class.s-downloading]="ds === 'downloading'"
-               [class.s-done]="ds === 'done'"
-               [class.s-error]="ds === 'error'"
-               (click)="ds === 'idle' || ds === 'not-downloaded' ? toggleItem(item.id) : null">
-
+          <div class="item-row" [class.selected]="isSelected(item.id)" (click)="toggleItem(item.id)">
             <input type="checkbox" class="item-checkbox"
                    [checked]="isSelected(item.id)"
-                   [disabled]="ds !== 'idle' && ds !== 'not-downloaded'"
                    (click)="$event.stopPropagation()" (change)="toggleItem(item.id)" />
-
             <span class="item-icon">{{ typeIcon(item.type) }}</span>
-
             <div class="item-info">
               <span class="item-name">{{ item.fileName || item.text || '(no text)' }}</span>
               <span class="item-meta">
                 @if (item.fileSize) { {{ formatSize(item.fileSize) }} · }
                 @if (item.date) { {{ item.date | date:'mediumDate' }} }
               </span>
-              @if (ds === 'downloading') {
-                <div class="progress-bar-wrap">
-                  <div class="progress-bar-track"><div class="progress-bar-fill" [style.width.%]="prog.pct"></div></div>
-                  <span class="progress-label">{{ prog.pct }}% @if (prog.total > 0) { · {{ formatSize(prog.downloaded) }} / {{ formatSize(prog.total) }} }</span>
-                </div>
-              }
-              @if (ds === 'queued') { <span class="queue-label">In queue…</span> }
             </div>
-
             <span class="item-badge" [class]="item.type">{{ item.type }}</span>
-
             <div class="item-actions">
-              @switch (ds) {
-                @case ('downloading') { <span class="status-icon spinning"><span class="mini-spinner dark"></span></span> }
-                @case ('queued')      { <span class="status-icon queued" title="Queued">⏳</span> }
-                @case ('done') {
-                  <span class="status-icon done">✓</span>
-                  @if (entry?.filePath) {
-                    <button class="open-btn" (click)="$event.stopPropagation(); openFile(entry!.filePath!)">▶</button>
-                    <button class="open-btn folder" (click)="$event.stopPropagation(); openFolder(entry!.filePath!)">📂</button>
-                  }
-                }
-                @case ('error') {
-                  <span class="status-icon error">✕</span>
-                  <button class="retry-btn" (click)="$event.stopPropagation(); retryItem(strId(item.id))">↺</button>
-                }
-                @case ('skipped') { <span class="status-icon skipped">—</span> }
+              @if (isPending(item.id)) {
+                <span class="status-icon pending" title="Downloading — do not close this tab"><span class="mini-spinner dark"></span> Downloading…</span>
+              } @else if (isDownloaded(item.id)) {
+                <span class="status-icon done" title="Downloaded">✓</span>
+                <button class="open-btn downloaded" title="Download again" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
+              } @else {
+                <button class="open-btn" title="Download" (click)="$event.stopPropagation(); downloadItem(item)">⬇</button>
               }
             </div>
           </div>
@@ -272,26 +214,27 @@
       </div>
     }
   </main>
-</div>
 
-@if (showLocationPicker()) {
-  <div class="modal-backdrop" (click)="cancelLocationPicker()">
-    <div class="modal" (click)="$event.stopPropagation()">
-      <h2 class="modal-title">Choose download location</h2>
-      <p class="modal-subtitle">Files will be saved in a sub-folder named after the group and topic.</p>
-      <div class="dest-options">
-        @for (opt of destOptions(); track opt.key) {
-          <button class="dest-option" [class.active]="selectedDest() === opt.key" (click)="selectDest(opt.key)">
-            <span class="dest-icon">@switch (opt.key) { @case ('desktop') { 🖥️ } @case ('downloads') { 📥 } @default { 📁 } }</span>
-            <span class="dest-label">{{ opt.label }}</span>
-            <span class="dest-path">{{ opt.path }}</span>
-          </button>
+  <!-- ── Sticky selection bar ── -->
+  @if (selectedCount() > 0) {
+    <div class="sticky-bar">
+      <div class="sticky-bar-left">
+        <span class="sticky-count">{{ selectedCount() }} selected</span>
+        @if (totalSelectedSize() > 0) {
+          <span class="sticky-size">{{ totalSelectedSizePartial() ? '~' : '' }}{{ formatSize(totalSelectedSize()) }}</span>
+        } @else if (totalSelectedSizePartial()) {
+          <span class="sticky-size sticky-size-unknown">size unknown</span>
         }
       </div>
-      <div class="modal-actions">
-        <button class="modal-cancel" (click)="cancelLocationPicker()">Cancel</button>
-        <button class="modal-confirm" (click)="confirmDownload()">Download {{ selectedCount() }} item{{ selectedCount() !== 1 ? 's' : '' }}</button>
+      <div class="sticky-bar-actions">
+        <button class="sticky-select-all" (click)="toggleAll()">
+          {{ allSelected() ? 'Deselect all' : 'Select all (' + filteredItems().length + ')' }}
+        </button>
+        <button class="sticky-download" (click)="downloadSelected()">
+          Download {{ selectedCount() }}
+        </button>
       </div>
     </div>
-  </div>
-}
+  }
+
+</div>

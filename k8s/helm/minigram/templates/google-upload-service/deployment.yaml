@@ -1,0 +1,50 @@
+# ── google-upload-service Deployment ─────────────────────────────────────────
+#
+# Future service for uploading files to Google Drive.
+# Currently a placeholder — real implementation will use the googleapis SDK.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: google-upload-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: google-upload-service
+spec:
+  replicas: {{ .Values.googleUploadService.replicas }}
+  selector:
+    matchLabels:
+      app: google-upload-service
+  template:
+    metadata:
+      labels:
+        app: google-upload-service
+    spec:
+      containers:
+        - name: google-upload-service
+          image: {{ .Values.googleUploadService.image }}
+          ports:
+            - containerPort: {{ .Values.googleUploadService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.googleUploadService.port }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.googleUploadService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.googleUploadService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

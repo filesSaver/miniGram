@@ -1,0 +1,77 @@
+# ── auth-service Deployment ───────────────────────────────────────────────────
+#
+# WHY: Handles Telegram phone number login (sends OTP, verifies it) and issues
+# JWTs that all other services use to authenticate requests.
+#
+# WHY replicas: 1 (IMPORTANT — do not increase):
+#   During Telegram login, the service holds a live MTProto client connection
+#   in memory (pendingAuth Map). If two pods exist and the OTP request hits
+#   pod-A but the OTP verification hits pod-B, the login fails because pod-B
+#   has no record of the pending session. Until this is moved to Redis or DB,
+#   keep at 1 replica.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auth-service
+spec:
+  replicas: {{ .Values.authService.replicas }}
+  selector:
+    matchLabels:
+      app: auth-service
+  template:
+    metadata:
+      labels:
+        app: auth-service
+    spec:
+      initContainers:
+        - name: wait-for-db-service
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for db-service:{{ .Values.dbService.port }}..."
+              until nc -z db-service {{ .Values.dbService.port }}; do
+                sleep 2
+              done
+              echo "db-service is ready."
+
+      containers:
+        - name: auth-service
+          image: {{ .Values.authService.image }}
+          ports:
+            - containerPort: {{ .Values.authService.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.authService.port }}"
+            - name: DB_SERVICE_URL
+              value: "http://db-service:{{ .Values.dbService.port }}"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: minigram-secrets
+                  key: JWT_SECRET
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.authService.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.authService.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

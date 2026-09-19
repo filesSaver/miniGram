@@ -1,0 +1,63 @@
+# ── ALB Ingress ───────────────────────────────────────────────────────────────
+#
+# WHY: This is the ONLY resource that creates something public-facing in AWS.
+# It tells the AWS Load Balancer Controller (running inside the cluster) to
+# provision an Application Load Balancer (ALB) in your AWS account.
+#
+# TRAFFIC FLOW:
+#   Internet → ALB (public) → ui-service:80 (all routes)
+#
+# The ui-service nginx then internally proxies /api/* to api-gateway:3000.
+# This is simpler than splitting routes at the ALB level, and keeps the
+# nginx timeout/SSE/streaming config (already in the Docker image) in one place.
+#
+# KEY ANNOTATIONS EXPLAINED:
+#   kubernetes.io/ingress.class: alb
+#     → Tells the AWS Load Balancer Controller to handle this Ingress
+#
+#   alb.ingress.kubernetes.io/scheme: internet-facing
+#     → Creates a public ALB. Change to "internal" for a private VPC-only ALB.
+#
+#   alb.ingress.kubernetes.io/target-type: ip
+#     → ALB sends traffic directly to pod IPs (requires VPC CNI add-on).
+#       This is required because our nodes are in private subnets.
+#
+#   alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=600
+#     → ALB connection timeout. 600s covers large Telegram file downloads.
+#       The default is 60s which would cut off long downloads.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minigram-ingress
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    # Extend ALB idle timeout to handle large file downloads and SSE streams
+    alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=600
+    {{- if .Values.ingress.tlsEnabled }}
+    # HTTPS: add your ACM certificate ARN in values.yaml to enable
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.ingress.acmCertificateArn }}
+    {{- end }}
+spec:
+  rules:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          # All traffic goes to ui-service.
+          # ui-service's nginx.conf handles /api/* internally by proxying to api-gateway.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui-service
+                port:
+                  number: {{ .Values.uiService.port }}

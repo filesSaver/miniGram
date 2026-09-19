@@ -1,0 +1,22 @@
+# ── db-service Service ────────────────────────────────────────────────────────
+#
+# ClusterIP service — gives "db-service:3006" as a stable internal DNS name.
+# auth-service, telegram-read-service, and telegram-download-service all use
+# this address via their DB_SERVICE_URL environment variable.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: db-service
+spec:
+  type: ClusterIP
+  selector:
+    app: db-service
+  ports:
+    - name: http
+      port: {{ .Values.dbService.port }}
+      targetPort: {{ .Values.dbService.port }}

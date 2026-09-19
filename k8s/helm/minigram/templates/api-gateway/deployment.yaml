@@ -1,0 +1,83 @@
+# ── api-gateway Deployment ────────────────────────────────────────────────────
+#
+# WHY: Acts as the single entry point for all backend API calls coming from
+# the ui-service (nginx). It reverse-proxies each route to the right service:
+#   /auth/*       → auth-service
+#   /groups/*     → telegram-read-service
+#   /download/*   → telegram-download-service (no timeout — large file streams)
+#   /download/log-db, /download/counts-db → db-service
+#
+# The ui-service nginx sends /api/* to this gateway (stripping /api).
+# This service is STATELESS — it only proxies requests, holds no state.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  replicas: {{ .Values.apiGateway.replicas }}
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      initContainers:
+        - name: wait-for-auth-service
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for auth-service:{{ .Values.authService.port }}..."
+              until nc -z auth-service {{ .Values.authService.port }}; do
+                sleep 2
+              done
+              echo "auth-service is ready."
+
+      containers:
+        - name: api-gateway
+          image: {{ .Values.apiGateway.image }}
+          ports:
+            - containerPort: {{ .Values.apiGateway.port }}
+          env:
+            - name: PORT
+              value: "{{ .Values.apiGateway.port }}"
+            # These point to the Kubernetes ClusterIP Service DNS names
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service:{{ .Values.authService.port }}"
+            - name: READ_SERVICE_URL
+              value: "http://telegram-read-service:{{ .Values.telegramReadService.port }}"
+            - name: DOWNLOAD_SERVICE_URL
+              value: "http://telegram-download-service:{{ .Values.telegramDownloadService.port }}"
+            - name: GUPLOAD_SERVICE_URL
+              value: "http://google-upload-service:{{ .Values.googleUploadService.port }}"
+            - name: GDOWNLOAD_SERVICE_URL
+              value: "http://google-download-service:{{ .Values.googleDownloadService.port }}"
+            - name: DB_SERVICE_URL
+              value: "http://db-service:{{ .Values.dbService.port }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.apiGateway.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.apiGateway.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"

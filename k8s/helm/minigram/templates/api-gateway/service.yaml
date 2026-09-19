@@ -1,0 +1,22 @@
+# ── api-gateway Service ───────────────────────────────────────────────────────
+#
+# ClusterIP — "api-gateway:3000" internally.
+# ui-service nginx proxies /api/* here.
+# The Ingress also routes /api/* directly to this service as a fallback.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api-gateway
+spec:
+  type: ClusterIP
+  selector:
+    app: api-gateway
+  ports:
+    - name: http
+      port: {{ .Values.apiGateway.port }}
+      targetPort: {{ .Values.apiGateway.port }}

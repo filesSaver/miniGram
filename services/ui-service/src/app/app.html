@@ -4,19 +4,198 @@
   </div>
 }
 
+@if (step() === 'app-login' || step() === 'app-register') {
+  <div class="landing-page">
+
+    <!-- Hero + pain-points section -->
+    <section class="landing-hero">
+      <div class="landing-brand">
+        <span class="lb-mini">mini</span><span class="lb-gram">Gram</span><span class="lb-dot">.</span><span class="lb-load">load</span>
+      </div>
+      <p class="landing-tagline">Your Telegram groups are a beautiful disaster.</p>
+
+      <!-- Chat dialog bubbles -->
+      <div class="pain-dialogs">
+
+        <div class="dialog-row left">
+          <div class="dialog-avatar">😤</div>
+          <div class="bubble left">
+            Someone shared <strong>47 photos</strong> in the group last night. I can't find the download button anywhere.
+          </div>
+        </div>
+
+        <div class="dialog-row right">
+          <div class="bubble right">
+            Wait, you can actually download things from Telegram?? I thought you just had to screenshot everything 😅
+          </div>
+          <div class="dialog-avatar">🤦</div>
+        </div>
+
+        <div class="dialog-row left">
+          <div class="dialog-avatar">😭</div>
+          <div class="bubble left">
+            I found a channel with <strong>3 years</strong> of tutorial videos. Click, save, click, save... 4 hours later, I got 12 files.
+          </div>
+        </div>
+
+        <div class="dialog-row right">
+          <div class="bubble right">
+            Bro the group has videos, PDFs, voice notes AND photos all mixed together. It's like a digital hoarder's attic.
+          </div>
+          <div class="dialog-avatar">🗂️</div>
+        </div>
+
+        <div class="dialog-row left">
+          <div class="dialog-avatar">😩</div>
+          <div class="bubble left">
+            My phone storage is full but I need those files. Telegram says "Download" but it means "preview for 30 seconds then delete."
+          </div>
+        </div>
+
+        <div class="dialog-row right">
+          <div class="bubble right">
+            I've been scrolling for <strong>45 minutes</strong> trying to find that PDF someone sent 3 weeks ago. Still going.
+          </div>
+          <div class="dialog-avatar">🔍</div>
+        </div>
+
+        <div class="dialog-row left">
+          <div class="dialog-avatar">🤯</div>
+          <div class="bubble left">
+            The channel has <strong>no download access</strong>. The admin locked it. I just want to save the recipe videos!!
+          </div>
+        </div>
+
+        <div class="solution-callout">
+          <div class="sc-icon">✨</div>
+          <div class="sc-text">
+            <strong>We fixed all of that.</strong>
+            <span>Browse every media type. Batch download. No restrictions. Free.</span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Auth card section -->
+    <section class="landing-auth">
+
+      @if (step() === 'app-login') {
+        <div class="auth-card-new">
+          <h2 class="acn-title">Welcome back</h2>
+          <p class="acn-sub">Sign in and reclaim your media</p>
+
+          <div class="acn-field">
+            <input type="text" placeholder="Username"
+              [ngModel]="appUsername()" (ngModelChange)="appUsername.set($event)"
+              (keydown.enter)="doAppLogin()" />
+          </div>
+          <div class="acn-field">
+            <input type="password" placeholder="Password"
+              [ngModel]="appPassword()" (ngModelChange)="appPassword.set($event)"
+              (keydown.enter)="doAppLogin()" />
+          </div>
+
+          @if (error()) { <p class="acn-error">{{ error() }}</p> }
+
+          <button class="acn-primary" (click)="doAppLogin()"
+            [disabled]="loading() || !appUsername() || !appPassword()">
+            {{ loading() ? 'Signing in...' : '🚀 Sign In' }}
+          </button>
+
+          <div class="acn-divider"><span>or</span></div>
+
+          <button class="acn-secondary" (click)="step.set('app-register'); error.set('')">
+            Create a free account
+          </button>
+        </div>
+      }
+
+      @if (step() === 'app-register') {
+        <div class="auth-card-new">
+          <h2 class="acn-title">It's free. Always.</h2>
+          <p class="acn-sub">Create your account in seconds</p>
+
+          <div class="acn-field">
+            <input type="text" placeholder="Username (3–30 chars)"
+              [ngModel]="registerUsername()" (ngModelChange)="registerUsername.set($event)" />
+          </div>
+          <div class="acn-field">
+            <input type="password" placeholder="Password (min 8 chars)"
+              [ngModel]="registerPassword()" (ngModelChange)="registerPassword.set($event)" />
+          </div>
+          <div class="acn-field">
+            <input type="password" placeholder="Confirm password"
+              [ngModel]="registerConfirm()" (ngModelChange)="registerConfirm.set($event)" />
+          </div>
+
+          @if (error()) { <p class="acn-error">{{ error() }}</p> }
+
+          <button class="acn-primary" (click)="doRegister()"
+            [disabled]="loading() || !registerUsername() || !registerPassword() || !registerConfirm()">
+            {{ loading() ? 'Creating...' : '🎉 Create Account' }}
+          </button>
+
+          <div class="acn-divider"><span>or</span></div>
+
+          <button class="acn-secondary" (click)="step.set('app-login'); error.set('')">
+            ← Back to sign in
+          </button>
+        </div>
+      }
+
+      <!-- Buy me a coffee -->
+      <a class="bmac-btn" href="https://buymeacoffee.com" target="_blank" rel="noopener noreferrer">
+        ☕ Buy me a coffee
+      </a>
+
+    </section>
+
+  </div>
+}
+
+@if (step() === 'setup') {
+  <div class="fullpage-center">
+    <div class="auth-card">
+      <h1>Connect Telegram</h1>
+      <p class="subtitle">
+        You need API credentials from Telegram to continue.<br/>
+        Go to <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org/apps</a>,
+        sign in, open <strong>API development tools</strong>, and create an app.
+        Copy the <strong>App api_id</strong> (a number) and <strong>App api_hash</strong> (a 32-char hex string).
+      </p>
+      <div class="input-group">
+        <input type="number" placeholder="api_id  (e.g. 1234567)"
+          [ngModel]="apiId()" (ngModelChange)="apiId.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="text" placeholder="api_hash  (32-char hex)"
+          [ngModel]="apiHash()" (ngModelChange)="apiHash.set($event)" />
+      </div>
+      <div class="input-group" style="margin-top: 0.5rem">
+        <input type="tel" placeholder="Phone number  (e.g. +91 9876543210)"
+          [ngModel]="setupPhone()" (ngModelChange)="setupPhone.set($event)" />
+        <button (click)="saveSetup()" [disabled]="loading() || !apiId() || !apiHash() || !setupPhone()">
+          {{ loading() ? 'Saving...' : 'Continue' }}
+        </button>
+      </div>
+      @if (error()) { <p class="error">{{ error() }}</p> }
+    </div>
+  </div>
+}
+
 @if (step() === 'phone') {
   <div class="fullpage-center">
     <div class="auth-card">
       <h1>Sign in to Telegram</h1>
-      <p class="subtitle">Enter your phone number to receive a code</p>
+      <p class="subtitle">We'll send a login code to your registered phone number</p>
       <div class="input-group">
-        <input type="tel" placeholder="+91 9876543210"
-          [ngModel]="phoneNumber()" (ngModelChange)="phoneNumber.set($event)" />
-        <button (click)="sendCode()" [disabled]="loading() || !phoneNumber()">
+        <button (click)="sendCode()" [disabled]="loading()">
           {{ loading() ? 'Sending...' : 'Send Code' }}
         </button>
       </div>
       @if (error()) { <p class="error">{{ error() }}</p> }
+      <button class="link" (click)="step.set('setup'); error.set('')">← Change Telegram credentials</button>
     </div>
   </div>
 }
@@ -25,15 +204,16 @@
   <div class="fullpage-center">
     <div class="auth-card">
       <h1>Enter OTP</h1>
-      <p class="subtitle">Code sent to {{ phoneNumber() }}</p>
+      <p class="subtitle">Enter the code Telegram sent to your phone</p>
       <div class="input-group">
         <input type="text" placeholder="12345" maxlength="5"
-          [ngModel]="code()" (ngModelChange)="code.set($event)" />
+          [ngModel]="code()" (ngModelChange)="code.set($event)"
+          (keydown.enter)="signIn()" />
         <button (click)="signIn()" [disabled]="loading() || !code()">
           {{ loading() ? 'Verifying...' : 'Verify' }}
         </button>
       </div>
-      <button class="link" (click)="step.set('phone')">← Change number</button>
+      <button class="link" (click)="step.set('phone')">← Resend code</button>
       @if (error()) { <p class="error">{{ error() }}</p> }
     </div>
   </div>
@@ -46,7 +226,8 @@
       <p class="subtitle">Your account has 2FA enabled</p>
       <div class="input-group">
         <input type="password" placeholder="2FA Password"
-          [ngModel]="password()" (ngModelChange)="password.set($event)" />
+          [ngModel]="password()" (ngModelChange)="password.set($event)"
+          (keydown.enter)="submit2FA()" />
         <button (click)="submit2FA()" [disabled]="loading() || !password()">
           {{ loading() ? 'Verifying...' : 'Submit' }}
         </button>

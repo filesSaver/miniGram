@@ -1,0 +1,20 @@
+# ── google-download-service Service ──────────────────────────────────────────
+# ClusterIP — "google-download-service:3005" internally.
+# api-gateway proxies /google/download/* here.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: google-download-service
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: google-download-service
+spec:
+  type: ClusterIP
+  selector:
+    app: google-download-service
+  ports:
+    - name: http
+      port: {{ .Values.googleDownloadService.port }}
+      targetPort: {{ .Values.googleDownloadService.port }}

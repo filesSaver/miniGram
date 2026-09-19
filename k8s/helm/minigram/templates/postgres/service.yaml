@@ -1,0 +1,25 @@
+# ── PostgreSQL Service ────────────────────────────────────────────────────────
+#
+# WHY: Pods get random IP addresses that change on every restart.
+# A Service gives a stable DNS name ("postgres") that other pods use.
+# db-service connects to "postgres:5432" and it always resolves correctly
+# regardless of which node the pod is running on.
+#
+# ClusterIP means it is only reachable INSIDE the cluster — not from the internet.
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "minigram.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: postgres
+  ports:
+    - name: postgres
+      port: {{ .Values.postgres.port }}
+      targetPort: {{ .Values.postgres.port }}
