@@ -82,7 +82,7 @@ echo ""
 echo "==> Installing AWS Load Balancer Controller..."
 
 CLUSTER_NAME="minigram"
-AWS_REGION="ap-south-1"
+AWS_REGION="us-east-1"
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Download the IAM policy that allows the controller to call AWS APIs

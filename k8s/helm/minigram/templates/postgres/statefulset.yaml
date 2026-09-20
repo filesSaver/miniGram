@@ -52,6 +52,8 @@ spec:
                 secretKeyRef:
                   name: minigram-secrets
                   key: POSTGRES_DB
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           # WHERE data is stored inside the container.
           # Kubernetes binds the EBS volume here automatically.
           volumeMounts:
