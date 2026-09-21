@@ -113,7 +113,7 @@ export class AuthService {
     });
     const a = document.createElement('a');
     // Use BASE_DIRECT to bypass Angular dev-proxy buffering; in production this is the same origin
-    a.href = `${BASE_DIRECT}/download/file?${params}`;
+    a.href = `${BASE_DIRECT}/api/download/file?${params}`;
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
