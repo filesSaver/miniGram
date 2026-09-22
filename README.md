@@ -1,8 +1,59 @@
-# Telegram Content Downloader
+# miniGram
 
-A full-stack web application for browsing Telegram groups/channels and downloading their shared content — built as a **microservices architecture** with Docker.
+## Live Application
 
-> **Project Status:** Authentication, content browsing, and Telegram media downloading are implemented. Google Drive integration and API security are still under development.
+> **URL is updated automatically after each deployment.**
+
+| | |
+|---|---|
+| **App URL** | http://k8s-minigram-minigram-3e16dfc8d5-1226055827.us-east-1.elb.amazonaws.com |
+| **Status** | Deployed on AWS EKS (us-east-1) via GitHub Actions |
+
+---
+
+## Docker Hub Images
+
+All service images are public on Docker Hub under `sauravmehta/content-scrapper-*`:
+
+| Image | Link |
+|---|---|
+| auth-service | [sauravmehta/content-scrapper-auth-service](https://hub.docker.com/r/sauravmehta/content-scrapper-auth-service) |
+| telegram-read-service | [sauravmehta/content-scrapper-telegram-read-service](https://hub.docker.com/r/sauravmehta/content-scrapper-telegram-read-service) |
+| telegram-download-service | [sauravmehta/content-scrapper-telegram-download-service](https://hub.docker.com/r/sauravmehta/content-scrapper-telegram-download-service) |
+| google-upload-service | [sauravmehta/content-scrapper-google-upload-service](https://hub.docker.com/r/sauravmehta/content-scrapper-google-upload-service) |
+| google-download-service | [sauravmehta/content-scrapper-google-download-service](https://hub.docker.com/r/sauravmehta/content-scrapper-google-download-service) |
+| api-gateway | [sauravmehta/content-scrapper-api-gateway](https://hub.docker.com/r/sauravmehta/content-scrapper-api-gateway) |
+| ui-service | [sauravmehta/content-scrapper-ui-service](https://hub.docker.com/r/sauravmehta/content-scrapper-ui-service) |
+
+---
+
+## What We're Building
+
+miniGram is a self-hosted tool for browsing and downloading media from private Telegram groups you are a member of. The backend is split into independent microservices (auth, read, download, gateway, UI) deployed on AWS EKS, with a CI/CD pipeline on GitHub Actions that builds platform-correct Docker images and provisions a fresh EKS cluster on every run. The goal is to understand real-world microservices architecture, container orchestration on Kubernetes, and cloud deployment end-to-end — from a local Docker Compose setup all the way to a production-grade AWS deployment.
+
+---
+
+## Dev Journal
+
+Full engineering documentation — architecture, service deep-dives, infrastructure setup, and every bug with its root cause — lives in the dev journal:
+
+**[dev-journal/INDEX.md](./dev-journal/INDEX.md)**
+
+| Doc | What it covers |
+|---|---|
+| [01 — Overview](./dev-journal/01-overview.md) | System architecture, tech choices, request flow |
+| [02 — High Level Design](./dev-journal/02-high-level-design.md) | Components, data flow diagrams, security model |
+| [03 — Low Level Design](./dev-journal/03-low-level-design.md) | Every API endpoint, DB schema, nginx logic, K8s resources |
+| [04 — API Gateway](./dev-journal/04-service-api-gateway.md) | Routing table, path rewriting, streaming timeouts |
+| [05 — Auth Service](./dev-journal/05-service-auth.md) | Telegram OTP, 2FA, JWT, bcrypt, session state |
+| [06 — DB Service](./dev-journal/06-service-db.md) | PostgreSQL schema, queries, connection pool, inline migrations |
+| [07 — Telegram Read Service](./dev-journal/07-service-telegram-read.md) | GramJS MTProto, SSE streaming, in-memory cache |
+| [08 — Telegram Download Service](./dev-journal/08-service-telegram-download.md) | Binary streaming, backpressure, download queue |
+| [09 — UI Service](./dev-journal/09-service-ui.md) | Angular components, auth state machine, nginx config |
+| [10 — Local Infra](./dev-journal/10-infra-local.md) | Docker Compose setup, env vars, service networking |
+| [11 — AWS Infra](./dev-journal/11-infra-aws.md) | EKS cluster, ALB controller, Helm chart, deploy sequence |
+| [12 — Bugs & Fixes](./dev-journal/12-bugs-and-fixes.md) | Every bug encountered with root cause and fix |
+| [Deploy Log](./dev-journal/DEPLOY-LOG.md) | Session-by-session record of every deployment: commands run, outputs, errors, and fixes |
 
 ---
 

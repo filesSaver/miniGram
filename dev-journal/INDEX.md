@@ -24,6 +24,14 @@ a self-hosted tool for browsing and downloading media from private Telegram grou
 
 ---
 
+## Operational Log
+
+| File | What it covers |
+|------|----------------|
+| [DEPLOY-LOG.md](DEPLOY-LOG.md) | Session-by-session deployment record: cluster info, AWS credentials setup, standard redeploy commands, and a timestamped log of every command run with its output or error. Updated after each deploy session. |
+
+---
+
 ## Legacy Document
 
 | File | Note |

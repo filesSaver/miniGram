@@ -599,3 +599,98 @@ eksctl delete cluster -f k8s/cluster/eksctl-cluster.yaml
 ```bash
 kubectl exec postgres-0 -n minigram -- pg_dump -U minigram minigram > backup.sql
 ```
+
+---
+
+## CI/CD: GitHub Actions Smart Deploy
+
+The workflow at `.github/workflows/deploy.yml` is triggered manually via `workflow_dispatch`. It is designed to be **idempotent** — safe to run multiple times. Each run detects existing state and skips or upgrades rather than blindly recreating.
+
+### What It Does
+
+**Job 1 — Build & Push (runs in parallel across all 7 services):**
+- Builds each Docker image for `linux/amd64`.
+- Pushes two tags: `:latest` and `:<git-sha>`.
+- Uses GitHub Actions layer cache (`cache-from: type=gha`) — unchanged layers are not re-uploaded, making reruns fast.
+
+**Job 2 — Deploy (runs after all images are pushed):**
+Runs 6 steps sequentially. Each step is smart about existing state.
+
+### Step-by-Step Logic
+
+**Step 1 — Cluster:**
+```
+eksctl get cluster → exists?
+  YES → aws eks update-kubeconfig (reconnect kubectl, skip 15-min creation)
+  NO  → eksctl create cluster (full ~15-20 min setup)
+```
+
+**Step 2 — IAM policies:**
+```
+aws iam get-policy → ALB policy exists?
+  NO  → create it from upstream JSON
+  YES → skip
+
+For each of 4 policies:
+  list-attached-role-policies → already attached?
+    YES → skip
+    NO  → attach
+```
+
+**Step 3 — AWS Load Balancer Controller:**
+```
+helm status aws-load-balancer-controller → installed?
+  YES → helm upgrade (apply any chart updates)
+  NO  → helm install
+kubectl rollout status → wait until controller pods are ready
+```
+
+**Step 4 — App deploy:**
+```
+helm upgrade --install  (handles both first install and upgrades in one command)
+--create-namespace      (creates namespace if missing, no-ops if it exists)
+Images pinned to :<git-sha> so every PR deploys its exact images
+--wait --timeout 5m     (blocks until all pods pass readiness probes)
+```
+
+**Step 5 — ALB URL:**
+```
+Poll kubectl get ingress every 10s (up to 3 min) until ALB hostname appears
+Compare new hostname vs current README
+  SAME → skip git commit (no noise in history)
+  DIFFERENT → sed-replace in README, commit with [skip ci]
+```
+
+**Step 6 — Verify:**
+```
+kubectl get pods -n minigram  (final sanity check, printed in workflow log)
+```
+
+### Behaviour on Repeated Runs
+
+| Scenario | Cluster step | IAM step | ALB controller | App deploy |
+|---|---|---|---|---|
+| First ever run | Creates (~15 min) | Creates + attaches | Installs | Installs |
+| Rerun, nothing changed | Skips | Skips all | Upgrades (no-op) | Upgrades (rolling restart) |
+| Rerun after partial failure | Creates if missing | Attaches missing only | Installs/upgrades | Installs/upgrades |
+| New PR with code changes | Skips cluster | Skips IAM | Upgrades controller | Upgrades pods to new SHA |
+
+### Why `helm upgrade --install` Instead of `helm install`
+
+`helm install` fails if the release already exists:
+```
+Error: INSTALLATION FAILED: cannot re-use a name that is still in use
+```
+
+`helm upgrade --install` is idempotent: installs on first run, upgrades on every subsequent run. No need to detect state manually for the app deploy step.
+
+### Why Images Are Tagged with `github.sha`
+
+Each run tags images with the commit SHA (e.g. `:abc1234`). Helm passes these SHA-tagged images to the deployment. This means:
+- Every PR deploys its exact code, not whatever `:latest` happens to be.
+- Rolling back is `helm rollback minigram 1 -n minigram` — Kubernetes pulls the old SHA image, not latest.
+- Concurrent runs don't step on each other's images.
+
+### Known Limitation: Sandbox Resets Every 4 Hours
+
+The Pluralsight sandbox destroys all AWS resources every 4 hours. After a reset, the cluster is gone and the next workflow run does a full 15–20 minute creation. The smart-skip logic helps only within a single sandbox session. This is expected behaviour for a sandbox environment.

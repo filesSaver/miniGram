@@ -228,3 +228,46 @@ SELECT id, username, password_hash FROM users;  -- with password hashes
 ```
 
 **Note:** `psql -U postgres` fails — there is no `postgres` superuser. Always use `-U minigram`.
+
+---
+
+## Session: 2026-09-22 — GitHub Actions CI/CD
+
+### What was set up
+
+Created `.github/workflows/deploy.yml` — a manual-trigger GitHub Actions workflow that builds, pushes, and deploys the full stack to EKS.
+
+**Trigger:** Manual only — GitHub UI → Actions → "Build, Push & Deploy to EKS" → Run workflow
+
+**Job 1 — Build & Push** (parallel matrix, all 7 services):
+- Builds each image tagged as `:latest` and `:<git-sha>`
+- Pushes to Docker Hub (`sauravmehta/content-scrapper-*`)
+- Uses GitHub Actions layer cache per service to speed up rebuilds
+
+**Job 2 — Create Cluster & Deploy** (runs after all builds pass):
+- Authenticates to AWS using GitHub Secrets
+- Installs `eksctl` on the runner
+- Creates a **fresh EKS cluster** every time (`eksctl create cluster`) — sandbox resets every 4h so the cluster never exists
+- Attaches IAM policies directly to the node role (sandbox workaround — OIDC/IRSA is restricted in Pluralsight)
+- Installs AWS Load Balancer Controller via Helm (no IRSA)
+- Runs `helm install` with the `:<git-sha>` images just built
+- Polls for ALB URL and prints it at the end
+
+### Required GitHub Secrets
+
+Go to: repo → Settings → Secrets and variables → Actions → New repository secret
+
+| Secret | Value |
+|--------|-------|
+| `DOCKERHUB_USERNAME` | `sauravmehta` |
+| `DOCKERHUB_TOKEN` | Docker Hub access token (hub.docker.com → Account Settings → Security) |
+| `AWS_ACCESS_KEY_ID` | From Pluralsight sandbox (update each new session) |
+| `AWS_SECRET_ACCESS_KEY` | From Pluralsight sandbox (update each new session) |
+
+> **Important:** AWS credentials are Pluralsight sandbox credentials that reset each session. Update the two AWS secrets in GitHub before running the workflow in a new lab session.
+
+### Key design notes
+
+- **Platform fix baked in:** GitHub Actions runners are `linux/amd64` — no more ARM vs amd64 mismatch from building on Apple Silicon locally.
+- **`--reuse-values`:** Helm keeps all existing values (secrets, postgres config, ingress) and only overrides the image tags. Safe to run without touching `values.yaml`.
+- **Git SHA tagging:** Every deploy is traceable — `:<git-sha>` tag matches the exact commit deployed.
