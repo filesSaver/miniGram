@@ -188,6 +188,7 @@ jobs:
 
           helm upgrade --install ${{ env.HELM_RELEASE }} ${{ env.HELM_CHART }} \
             --namespace ${{ env.NAMESPACE }} \
+            --create-namespace \
             $IMAGE_ARGS \
             --wait \
             --timeout 5m
