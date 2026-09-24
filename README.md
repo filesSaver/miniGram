@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **App URL** | http://k8s-minigram-minigram-3e16dfc8d5-2015188742.us-east-1.elb.amazonaws.com |
+| **App URL** | http://k8s-minigram-minigram-3e16dfc8d5-768189416.us-east-1.elb.amazonaws.com |
 | **Status** | Deployed on AWS EKS (us-east-1) via GitHub Actions |
 
 ---
