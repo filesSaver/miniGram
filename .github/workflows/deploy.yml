@@ -149,23 +149,29 @@ jobs:
           helm repo add eks https://aws.github.io/eks-charts
           helm repo update
 
-          if helm status aws-load-balancer-controller -n kube-system 2>/dev/null; then
-            echo "✅ ALB controller already installed — upgrading..."
-            HELM_CMD="upgrade"
-          else
-            echo "🚀 ALB controller not found — installing..."
-            HELM_CMD="install"
-          fi
-
-          helm $HELM_CMD aws-load-balancer-controller eks/aws-load-balancer-controller \
+          # Always use upgrade --install so stale webhook certs get regenerated
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
             -n kube-system \
             --set clusterName=${{ env.CLUSTER_NAME }} \
             --set serviceAccount.create=true \
             --set region=${{ env.AWS_REGION }} \
             --set vpcId="$VPC_ID"
 
+          # Force pod restart to regenerate TLS webhook certificate
+          kubectl rollout restart deployment/aws-load-balancer-controller -n kube-system
+
           kubectl rollout status deployment/aws-load-balancer-controller \
             -n kube-system --timeout=120s
+
+        # ── Clean up orphaned namespace left by a prior failed install ──────────
+      - name: Clean up orphaned namespace if no Helm release exists
+        run: |
+          if ! helm status ${{ env.HELM_RELEASE }} -n ${{ env.NAMESPACE }} 2>/dev/null; then
+            if kubectl get namespace ${{ env.NAMESPACE }} 2>/dev/null; then
+              echo "⚠️  Orphaned namespace found — deleting so Helm can recreate it cleanly..."
+              kubectl delete namespace ${{ env.NAMESPACE }} --wait=true
+            fi
+          fi
 
       # ── Smart app deploy: install on first run, upgrade on reruns ─────────
       - name: Deploy or upgrade miniGram via Helm
