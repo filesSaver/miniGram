@@ -83,9 +83,6 @@ const services = [
       PORT: '3003',
       JWT_SECRET: JWT,
       DB_SERVICE_URL: 'http://localhost:3006',
-      DOWNLOADS_DESKTOP: envVars.DOWNLOADS_DESKTOP || `${process.env.HOME}/Desktop`,
-      DOWNLOADS_DOWNLOADS: envVars.DOWNLOADS_DOWNLOADS || `${process.env.HOME}/Downloads`,
-      DOWNLOADS_CUSTOM: path.join(ROOT, 'downloads/Custom'),
     },
   },
   {
